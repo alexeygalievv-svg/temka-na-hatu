@@ -6,6 +6,7 @@ import {
   openTelegramLink,
   retrieveLaunchParams,
   retrieveRawInitData,
+  copyTextToClipboard,
 } from '@telegram-apps/sdk';
 
 /**
@@ -80,6 +81,35 @@ export function haptic(style: 'light' | 'medium' | 'soft' = 'light'): void {
     }
   } catch {
     /* не в Telegram */
+  }
+}
+
+/** Скопировать текст в буфер — работает в Telegram Mini App и в браузере. */
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    await copyTextToClipboard(text);
+    return true;
+  } catch {
+    /* fallback для старых WebView */
+  }
+
+  try {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.top = '0';
+    textarea.style.left = '0';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    textarea.setSelectionRange(0, text.length);
+    const ok = document.execCommand('copy');
+    document.body.removeChild(textarea);
+    return ok;
+  } catch {
+    return false;
   }
 }
 

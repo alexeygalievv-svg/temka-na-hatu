@@ -24,15 +24,19 @@ interface MapCanvasProps {
 }
 
 /** Размеры пина — должны совпадать с CSS и iconImageOffset. */
-const PIN_W = 38;
-const PIN_H = 50;
+const PIN_W = 40;
+const PIN_H = 42;
 
 function pinLayoutClass(ymaps: { templateLayoutFactory: { createClass: (html: string) => unknown } }) {
   return ymaps.templateLayoutFactory.createClass(`
-    <div class="map-pin $[properties.activeClass]">
+    <div class="map-pin map-pin--heart $[properties.activeClass]">
       <div class="map-pin__inner">
-        <div class="map-pin__bubble"><span>$[properties.label]</span></div>
-        <div class="map-pin__leg"></div>
+        <div class="map-pin__heart-wrap">
+          <svg class="map-pin__heart-svg" viewBox="0 0 40 42" xmlns="http://www.w3.org/2000/svg">
+            <path class="map-pin__heart-shape" d="M20 37 C20 37 5 25.5 5 15.5 C5 9.5 9.5 5 15.5 5 C18.5 5 20.5 7 20 9.5 C19.5 7 21.5 5 24.5 5 C30.5 5 35 9.5 35 15.5 C35 25.5 20 37 20 37 Z"/>
+          </svg>
+          <span class="map-pin__heart-num">$[properties.label]</span>
+        </div>
       </div>
       <div class="map-pin__shadow"></div>
     </div>

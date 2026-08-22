@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '../components/Button';
-import { haptic, shareLink } from '../telegram';
+import { copyText, haptic, shareLink } from '../telegram';
 
 interface LinkScreenProps {
   link: string;
@@ -11,17 +11,28 @@ interface LinkScreenProps {
 
 export function LinkScreen({ link, title, onBack }: LinkScreenProps) {
   const [copied, setCopied] = useState(false);
+  const [manualCopy, setManualCopy] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   async function copy() {
-    try {
-      await navigator.clipboard.writeText(link);
+    const ok = await copyText(link);
+    if (ok) {
       setCopied(true);
+      setManualCopy(false);
       haptic('medium');
       setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Fallback для окружений без clipboard API
-      window.prompt('Скопируйте ссылку:', link);
+      return;
     }
+
+    setManualCopy(true);
+    haptic('soft');
+    requestAnimationFrame(() => {
+      const input = inputRef.current;
+      if (!input) return;
+      input.focus();
+      input.select();
+      input.setSelectionRange(0, link.length);
+    });
   }
 
   return (
@@ -50,8 +61,24 @@ export function LinkScreen({ link, title, onBack }: LinkScreenProps) {
 
         <button type="button" className="link-screen__link" onClick={copy}>
           <span>{link.replace('https://', '')}</span>
-          <em>{copied ? 'Скопировано' : 'Нажмите, чтобы скопировать'}</em>
+          <em>
+            {copied
+              ? 'Скопировано'
+              : manualCopy
+                ? 'Выделите ссылку и скопируйте'
+                : 'Нажмите, чтобы скопировать'}
+          </em>
         </button>
+
+        {manualCopy && (
+          <input
+            ref={inputRef}
+            className="link-screen__fallback"
+            readOnly
+            value={link}
+            onFocus={(e) => e.target.select()}
+          />
+        )}
 
         <div className="link-screen__actions">
           <Button

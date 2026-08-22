@@ -1,9 +1,10 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { DraftPoint, IntroSettings, PublishProgress } from './types';
 import { DEFAULT_INTRO } from './types';
 import { getStartParam, getUserName, haptic } from './telegram';
 import { addPoint, createMap, uploadPhoto } from './api';
+import { clearDraft, loadDraft, restorePoints, saveDraftDebounced } from './lib/draftStorage';
 import { BuilderScreen } from './screens/BuilderScreen';
 import { PreviewScreen } from './screens/PreviewScreen';
 import { ViewerScreen } from './screens/ViewerScreen';
@@ -49,8 +50,26 @@ export default function App() {
   const [authorName, setAuthorName] = useState(() => getUserName() ?? '');
   const [intro, setIntro] = useState<IntroSettings>(DEFAULT_INTRO);
   const [points, setPoints] = useState<DraftPoint[]>([]);
+  const [draftReady, setDraftReady] = useState(false);
   const [publishing, setPublishing] = useState<PublishProgress | null>(null);
   const [publishError, setPublishError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (viewMapId) return;
+    const saved = loadDraft();
+    if (saved) {
+      setMapTitle(saved.mapTitle);
+      setAuthorName(saved.authorName);
+      setIntro(saved.intro);
+      setPoints(restorePoints(saved.points));
+    }
+    setDraftReady(true);
+  }, [viewMapId]);
+
+  useEffect(() => {
+    if (!draftReady || viewMapId) return;
+    saveDraftDebounced({ mapTitle, authorName, intro, points });
+  }, [draftReady, viewMapId, mapTitle, authorName, intro, points]);
 
   async function publish() {
     if (points.length === 0 || publishing) return;
@@ -82,6 +101,7 @@ export default function App() {
         });
       }
       haptic('medium');
+      clearDraft();
       setRoute({ name: 'link', link });
     } catch (error) {
       setPublishError(error instanceof Error ? error.message : 'Что-то пошло не так');

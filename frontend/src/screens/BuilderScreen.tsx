@@ -1,14 +1,16 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { DraftPoint, IntroSettings, PublishProgress } from '../types';
 import { haptic } from '../telegram';
 import { MapCanvas, type MapHandle } from '../components/MapCanvas';
 import { Button } from '../components/Button';
+import { BuilderOnboarding } from '../components/BuilderOnboarding';
 import { PointEditorSheet } from './PointEditorSheet';
 import { PointListSheet } from './PointListSheet';
 import { IntroEditorSheet } from './IntroEditorSheet';
 
 const MOSCOW = { lat: 55.7512, lng: 37.6184 };
+const ONBOARDING_KEY = 'builder-onboarding-seen';
 
 interface BuilderScreenProps {
   title: string;
@@ -53,12 +55,28 @@ export function BuilderScreen({
   onDismissError,
 }: BuilderScreenProps) {
   const mapRef = useRef<MapHandle>(null);
+  const mapFittedRef = useRef(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [listOpen, setListOpen] = useState(false);
   const [introOpen, setIntroOpen] = useState(false);
+  const [onboardingOpen, setOnboardingOpen] = useState(
+    () => sessionStorage.getItem(ONBOARDING_KEY) !== '1',
+  );
 
   const selected = points.find((p) => p.id === selectedId) ?? null;
   const selectedIndex = selected ? points.indexOf(selected) : -1;
+
+  useEffect(() => {
+    if (points.length === 0 || mapFittedRef.current) return;
+    mapFittedRef.current = true;
+    const timer = window.setTimeout(() => {
+      mapRef.current?.fitAll(
+        points.map((p) => ({ lat: p.lat, lng: p.lng })),
+        0,
+      );
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [points]);
 
   function handleMapClick(coords: { lat: number; lng: number }) {
     const point: DraftPoint = {
@@ -81,9 +99,15 @@ export function BuilderScreen({
 
   function deletePoint(id: string) {
     const point = points.find((p) => p.id === id);
-    if (point?.photoPreview) URL.revokeObjectURL(point.photoPreview);
+    if (point?.photoPreview?.startsWith('blob:')) URL.revokeObjectURL(point.photoPreview);
     onPointsChange(points.filter((p) => p.id !== id));
     if (selectedId === id) setSelectedId(null);
+    haptic('soft');
+  }
+
+  function dismissOnboarding() {
+    sessionStorage.setItem(ONBOARDING_KEY, '1');
+    setOnboardingOpen(false);
     haptic('soft');
   }
 
@@ -121,21 +145,6 @@ export function BuilderScreen({
           maxLength={60}
         />
       </header>
-
-      <AnimatePresence>
-        {points.length === 0 && (
-          <motion.div
-            className="builder__hint"
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ delay: 0.5, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-          >
-            <div className="builder__hint-pulse" />
-            Дважды коснитесь карты, чтобы добавить первое место
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       <footer className="builder__dock">
         <Button variant="ghost" onClick={() => setIntroOpen(true)}>
@@ -180,6 +189,10 @@ export function BuilderScreen({
         onDelete={deletePoint}
         onClose={() => setListOpen(false)}
       />
+
+      <AnimatePresence>
+        {onboardingOpen && <BuilderOnboarding onStart={dismissOnboarding} />}
+      </AnimatePresence>
 
       <AnimatePresence>
         {publishing && (
