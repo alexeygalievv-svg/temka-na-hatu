@@ -3,6 +3,7 @@ import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import { env } from './env.js';
 import { mapRoutes } from './routes/maps.js';
+import { supabase } from './supabase.js';
 
 const app = Fastify({ logger: true });
 
@@ -11,7 +12,13 @@ await app.register(multipart, {
   limits: { fileSize: 10 * 1024 * 1024, files: 1 },
 });
 
-app.get('/api/health', async () => ({ ok: true }));
+app.get('/api/health', async () => {
+  const { error } = await supabase.from('maps').select('id').limit(1);
+  return {
+    ok: !error,
+    db: error ? error.message : 'ok',
+  };
+});
 
 await app.register(mapRoutes);
 

@@ -8,9 +8,14 @@ function required(name: string): string {
   return value;
 }
 
+/** Базовый URL проекта без /rest/v1 — иначе Supabase SDK ломает пути. */
+function normalizeSupabaseUrl(url: string): string {
+  return url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '');
+}
+
 export const env = {
   port: Number(process.env.PORT ?? 8080),
-  supabaseUrl: required('SUPABASE_URL'),
+  supabaseUrl: normalizeSupabaseUrl(required('SUPABASE_URL')),
   supabaseServiceRoleKey: required('SUPABASE_SERVICE_ROLE_KEY'),
   telegramBotToken: required('TELEGRAM_BOT_TOKEN'),
   botUsername: process.env.BOT_USERNAME ?? 'your_bot',
