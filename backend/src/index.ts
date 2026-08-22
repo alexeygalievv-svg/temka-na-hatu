@@ -12,6 +12,12 @@ await app.register(multipart, {
   limits: { fileSize: 10 * 1024 * 1024, files: 1 },
 });
 
+app.get('/', async () => ({
+  ok: true,
+  service: 'memory-map-api',
+  health: '/api/health',
+}));
+
 app.get('/api/health', async () => {
   const { error } = await supabase.from('maps').select('id').limit(1);
   return {
