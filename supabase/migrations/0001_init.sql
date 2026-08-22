@@ -6,6 +6,9 @@ create table if not exists maps (
   owner_tg_id bigint not null,
   author_name text,
   title text not null default 'Карта воспоминаний',
+  intro_eyebrow text not null default 'Для тебя собрал',
+  intro_message text,
+  intro_button text not null default 'Открыть карту',
   status text not null default 'active',
   paid_at timestamptz,
   created_at timestamptz not null default now()

@@ -104,7 +104,12 @@ export default function App() {
       clearDraft();
       setRoute({ name: 'link', link });
     } catch (error) {
-      setPublishError(error instanceof Error ? error.message : 'Что-то пошло не так');
+      const message = error instanceof Error ? error.message : 'Что-то пошло не так';
+      if (message.includes('401') || message.toLowerCase().includes('init data')) {
+        setPublishError('Откройте приложение через Telegram-бота и попробуйте снова');
+      } else {
+        setPublishError(message);
+      }
     } finally {
       setPublishing(null);
     }

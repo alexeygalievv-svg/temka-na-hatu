@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '../components/Button';
 import { copyText, haptic, shareLink } from '../telegram';
@@ -34,6 +34,11 @@ export function LinkScreen({ link, title, onBack }: LinkScreenProps) {
       input.setSelectionRange(0, link.length);
     });
   }
+
+  useEffect(() => {
+    void copy();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="link-screen">
@@ -81,6 +86,9 @@ export function LinkScreen({ link, title, onBack }: LinkScreenProps) {
         )}
 
         <div className="link-screen__actions">
+          <Button wide onClick={copy}>
+            {copied ? 'Скопировано' : 'Скопировать ссылку'}
+          </Button>
           <Button
             wide
             onClick={() => shareLink(link, `Я собрал для тебя карту наших мест: «${title.trim() || 'Карта воспоминаний'}»`)}

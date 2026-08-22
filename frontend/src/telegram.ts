@@ -47,10 +47,15 @@ export function initTelegram(): void {
 /** Сырая строка initData — уходит на backend в заголовке Authorization. */
 export function getRawInitData(): string | null {
   try {
-    return retrieveRawInitData() ?? null;
+    const raw = retrieveRawInitData();
+    if (raw) return raw;
   } catch {
-    return null;
+    /* не в Telegram */
   }
+
+  const legacy = (window as Window & { Telegram?: { WebApp?: { initData?: string } } }).Telegram
+    ?.WebApp?.initData;
+  return legacy?.trim() ? legacy : null;
 }
 
 /** Параметр startapp (например, `map_AbC123`). */

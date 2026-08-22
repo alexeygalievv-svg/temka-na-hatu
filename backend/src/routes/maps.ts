@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { customAlphabet } from 'nanoid';
+import type { PostgrestError } from '@supabase/supabase-js';
 import { env } from '../env.js';
 import { supabase } from '../supabase.js';
 import { validateInitData, type TelegramUser } from '../telegramAuth.js';
@@ -8,6 +9,17 @@ import { validateInitData, type TelegramUser } from '../telegramAuth.js';
 const generateMapId = customAlphabet('0123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz', 12);
 
 const DEV_USER: TelegramUser = { id: 1, first_name: 'Dev' };
+
+function isMissingIntroColumns(error: PostgrestError): boolean {
+  const text = `${error.message ?? ''} ${error.details ?? ''} ${error.hint ?? ''}`.toLowerCase();
+  return text.includes('intro_');
+}
+
+function throwDbError(error: PostgrestError, context: string): never {
+  const err = new Error(`${context}: ${error.message}`) as Error & { statusCode?: number };
+  err.statusCode = 500;
+  throw err;
+}
 
 function authenticate(request: FastifyRequest): TelegramUser | null {
   const header = request.headers.authorization;
@@ -83,7 +95,20 @@ export async function mapRoutes(app: FastifyInstance) {
       intro_message: body.introMessage?.trim() || null,
       intro_button: body.introButton?.trim() || 'Открыть карту',
     });
-    if (error) throw error;
+
+    if (error) {
+      if (isMissingIntroColumns(error)) {
+        const { error: fallbackError } = await supabase.from('maps').insert({
+          id,
+          owner_tg_id: user.id,
+          author_name: authorName,
+          title: body.title?.trim() || 'Карта воспоминаний',
+        });
+        if (fallbackError) throwDbError(fallbackError, 'Не удалось создать карту');
+      } else {
+        throwDbError(error, 'Не удалось создать карту');
+      }
+    }
 
     return reply.code(201).send({
       id,
@@ -166,7 +191,43 @@ export async function mapRoutes(app: FastifyInstance) {
       .select('id, title, author_name, intro_eyebrow, intro_message, intro_button, created_at')
       .eq('id', mapId)
       .maybeSingle();
-    if (mapError) throw mapError;
+    if (mapError) {
+      if (isMissingIntroColumns(mapError)) {
+        const { data: legacyMap, error: legacyError } = await supabase
+          .from('maps')
+          .select('id, title, author_name, created_at')
+          .eq('id', mapId)
+          .maybeSingle();
+        if (legacyError) throwDbError(legacyError, 'Не удалось загрузить карту');
+        if (!legacyMap) return reply.code(404).send({ error: 'Map not found' });
+        const { data: points, error: pointsError } = await supabase
+          .from('points')
+          .select('id, title, description, photo_url, lat, lng, order_index')
+          .eq('map_id', mapId)
+          .order('order_index', { ascending: true });
+        if (pointsError) throwDbError(pointsError, 'Не удалось загрузить точки');
+        return {
+          id: legacyMap.id,
+          title: legacyMap.title,
+          authorName: legacyMap.author_name,
+          intro: {
+            eyebrow: 'Для тебя собрал',
+            message: '',
+            buttonText: 'Открыть карту',
+          },
+          points: (points ?? []).map((p) => ({
+            id: p.id,
+            title: p.title,
+            description: p.description ?? '',
+            photoUrl: p.photo_url ?? null,
+            lat: p.lat,
+            lng: p.lng,
+            orderIndex: p.order_index,
+          })),
+        };
+      }
+      throwDbError(mapError, 'Не удалось загрузить карту');
+    }
     if (!map) return reply.code(404).send({ error: 'Map not found' });
 
     const { data: points, error: pointsError } = await supabase

@@ -18,7 +18,8 @@ await app.register(mapRoutes);
 app.setErrorHandler((error: FastifyError, _request, reply) => {
   app.log.error(error);
   const status = error.statusCode && error.statusCode >= 400 ? error.statusCode : 500;
-  reply.code(status).send({ error: status === 500 ? 'Internal server error' : error.message });
+  const message = error.message || 'Internal server error';
+  reply.code(status).send({ error: message });
 });
 
 try {
