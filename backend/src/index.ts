@@ -3,7 +3,9 @@ import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import { env } from './env.js';
 import { mapRoutes } from './routes/maps.js';
+import { telegramRoutes } from './routes/telegram.js';
 import { supabase } from './supabase.js';
+import { setWebhook } from './telegramBot.js';
 
 const app = Fastify({ logger: true });
 
@@ -11,12 +13,6 @@ await app.register(cors, { origin: true });
 await app.register(multipart, {
   limits: { fileSize: 10 * 1024 * 1024, files: 1 },
 });
-
-app.get('/', async () => ({
-  ok: true,
-  service: 'memory-map-api',
-  health: '/api/health',
-}));
 
 app.get('/api/health', async () => {
   const { error } = await supabase.from('maps').select('id').limit(1);
@@ -27,6 +23,7 @@ app.get('/api/health', async () => {
 });
 
 await app.register(mapRoutes);
+await app.register(telegramRoutes);
 
 app.setErrorHandler((error: FastifyError, _request, reply) => {
   app.log.error(error);
@@ -37,6 +34,15 @@ app.setErrorHandler((error: FastifyError, _request, reply) => {
 
 try {
   await app.listen({ port: env.port, host: '0.0.0.0' });
+  if (env.publicWebhookUrl) {
+    const webhookUrl = `${env.publicWebhookUrl}/api/telegram/webhook`;
+    try {
+      await setWebhook(webhookUrl, env.telegramWebhookSecret);
+      app.log.info(`Telegram webhook set: ${webhookUrl}`);
+    } catch (error) {
+      app.log.error(error, 'Failed to set Telegram webhook');
+    }
+  }
 } catch (error) {
   app.log.error(error);
   process.exit(1);

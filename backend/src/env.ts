@@ -22,4 +22,7 @@ export const env = {
   /** Разрешает заголовок `Authorization: dev` для локальной разработки вне Telegram. */
   allowDevAuth: process.env.ALLOW_DEV_AUTH === 'true',
   storageBucket: process.env.STORAGE_BUCKET ?? 'memories',
+  /** Публичный URL backend (для webhook), например https://temka-backend.onrender.com */
+  publicWebhookUrl: process.env.PUBLIC_WEBHOOK_URL?.replace(/\/$/, ''),
+  telegramWebhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET,
 };

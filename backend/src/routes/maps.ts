@@ -4,6 +4,7 @@ import type { PostgrestError } from '@supabase/supabase-js';
 import { env } from '../env.js';
 import { supabase } from '../supabase.js';
 import { validateInitData, type TelegramUser } from '../telegramAuth.js';
+import { escapeHtml, mapOpenLink, mapShareLink, sendMessage } from '../telegramBot.js';
 
 /** Только буквы и цифры — безопасно для параметра startapp. */
 const generateMapId = customAlphabet('0123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz', 12);
@@ -110,9 +111,23 @@ export async function mapRoutes(app: FastifyInstance) {
       }
     }
 
+    const link = mapShareLink(id);
+    const title = escapeHtml(body.title?.trim() || 'Карта воспоминаний');
+    void sendMessage(
+      user.id,
+      `Карта «${title}» готова!\n\nСсылка для получателя:\n${link}`,
+      {
+        reply_markup: {
+          inline_keyboard: [[{ text: 'Открыть карту', url: mapOpenLink(id) }]],
+        },
+      },
+    ).catch(() => {
+      /* пользователь мог ещё не писать боту /start */
+    });
+
     return reply.code(201).send({
       id,
-      link: `https://t.me/${env.botUsername}?startapp=map_${id}`,
+      link,
     });
   });
 
