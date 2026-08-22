@@ -1,0 +1,41 @@
+# Blueprint для Render: https://render.com/docs/blueprint-spec
+# New → Blueprint → подключите репозиторий temka-na-hatu
+
+services:
+  - type: web
+    name: temka-backend
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    plan: free
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: ALLOW_DEV_AUTH
+        value: "false"
+      - key: STORAGE_BUCKET
+        value: memories
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: BOT_USERNAME
+        sync: false
+
+staticSites:
+  - name: temka-frontend
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: VITE_API_URL
+        sync: false
+      - key: VITE_YANDEX_MAPS_API_KEY
+        sync: false
