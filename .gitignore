@@ -1,0 +1,12 @@
+# Секреты
+.env
+.env.*
+!.env.example
+
+# Зависимости и сборки
+node_modules/
+dist/
+
+# Системное
+.DS_Store
+*.log
