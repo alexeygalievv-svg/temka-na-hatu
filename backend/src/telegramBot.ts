@@ -13,19 +13,30 @@ export function mapStartParam(mapId: string): string {
   return `map_${mapId}`;
 }
 
-/** Ссылка для шаринга — открывает чат с ботом и вызывает /start map_<id>. */
+function miniAppUrl(startapp?: string): string {
+  const base = `https://t.me/${env.botUsername}/${env.miniAppShortName}`;
+  if (!startapp) return base;
+  return `${base}?startapp=${encodeURIComponent(startapp)}`;
+}
+
+/** Ссылка на карту — открывает Mini App сразу на нужной карте. */
 export function mapShareLink(mapId: string): string {
-  return `https://t.me/${env.botUsername}?start=${mapStartParam(mapId)}`;
+  return miniAppUrl(mapStartParam(mapId));
 }
 
 /** Прямое открытие Mini App на карте. */
 export function mapOpenLink(mapId: string): string {
-  return `https://t.me/${env.botUsername}?startapp=${mapStartParam(mapId)}`;
+  return miniAppUrl(mapStartParam(mapId));
 }
 
 /** Открытие конструктора в Mini App. */
 export function builderOpenLink(): string {
-  return `https://t.me/${env.botUsername}?startapp=create`;
+  return miniAppUrl();
+}
+
+/** Ссылка через /start — бот пришлёт кнопку (запасной вариант). */
+export function mapBotStartLink(mapId: string): string {
+  return `https://t.me/${env.botUsername}?start=${mapStartParam(mapId)}`;
 }
 
 async function callTelegram<T>(method: string, body: Record<string, unknown>): Promise<T> {

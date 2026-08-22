@@ -4,6 +4,7 @@ import { supabase } from '../supabase.js';
 import {
   builderOpenLink,
   escapeHtml,
+  mapBotStartLink,
   mapOpenLink,
   mapShareLink,
   sendMessage,
@@ -51,6 +52,7 @@ async function handleStart(chatId: number, payload: string | undefined): Promise
         inline_keyboard: [
           [{ text: 'Открыть карту', url: mapOpenLink(map.id) }],
           [{ text: 'Поделиться ссылкой', url: mapShareLink(map.id) }],
+          [{ text: 'Открыть через бота', url: mapBotStartLink(map.id) }],
         ],
       },
     });

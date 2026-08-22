@@ -19,6 +19,8 @@ export const env = {
   supabaseServiceRoleKey: required('SUPABASE_SERVICE_ROLE_KEY'),
   telegramBotToken: required('TELEGRAM_BOT_TOKEN'),
   botUsername: process.env.BOT_USERNAME ?? 'your_bot',
+  /** Короткое имя Mini App из BotFather, например memories → t.me/bot/memories */
+  miniAppShortName: process.env.MINI_APP_SHORT_NAME ?? 'memories',
   /** Разрешает заголовок `Authorization: dev` для локальной разработки вне Telegram. */
   allowDevAuth: process.env.ALLOW_DEV_AUTH === 'true',
   storageBucket: process.env.STORAGE_BUCKET ?? 'memories',
