@@ -27,6 +27,16 @@ interface MapCanvasProps {
 const PIN_W = 40;
 const PIN_H = 42;
 
+/**
+ * Мягкое ускорение и долгое затухание. Яндекс принимает те же значения,
+ * что CSS transition-timing-function, поэтому cubic-bezier допустим.
+ */
+const CAMERA_EASE = 'cubic-bezier(0.32, 0, 0.22, 1)';
+
+const debugCamera = (label: string, payload: Record<string, unknown>) => {
+  if (import.meta.env.DEV) console.log(`[map-camera] ${label}`, payload);
+};
+
 /** Ждём не меньше duration: промис Яндекса часто резолвится сразу и обрывал анимацию. */
 function waitForAnimation(animation: unknown, minMs: number): Promise<void> {
   const minWait = new Promise<void>((resolve) => window.setTimeout(resolve, minMs));
@@ -76,6 +86,8 @@ export function MapCanvas({
   const pinLayoutRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const placemarksRef = useRef<Map<string, any>>(new Map());
+  /** Последние отрисованные данные пина — чтобы не трогать DOM зря во время анимации. */
+  const pinStateRef = useRef<Map<string, string>>(new Map());
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -158,6 +170,7 @@ export function MapCanvas({
     return () => {
       cancelled = true;
       placemarksRef.current.clear();
+      pinStateRef.current.clear();
       if (map) map.destroy();
       if (containerRef.current) containerRef.current.replaceChildren();
       mapRef.current = null;
@@ -175,10 +188,13 @@ export function MapCanvas({
     const wanted = new Map(pins.map((pin) => [pin.id, pin]));
     const layout = pinLayoutRef.current;
 
+    const drawn = pinStateRef.current;
+
     for (const [id, placemark] of [...existing]) {
       if (!wanted.has(id)) {
         map.geoObjects.remove(placemark);
         existing.delete(id);
+        drawn.delete(id);
       }
     }
 
@@ -188,6 +204,7 @@ export function MapCanvas({
         label: pin.label,
         activeClass: pin.active ? 'map-pin--active' : '',
       };
+      const signature = `${pin.label}|${props.activeClass}|${pin.lat}|${pin.lng}`;
 
       if (!placemark) {
         placemark = new ymaps.Placemark([pin.lat, pin.lng], props, {
@@ -211,10 +228,12 @@ export function MapCanvas({
         });
         map.geoObjects.add(placemark);
         existing.set(pin.id, placemark);
-      } else {
+      } else if (drawn.get(pin.id) !== signature) {
         placemark.geometry.setCoordinates([pin.lat, pin.lng]);
         placemark.properties.set(props);
       }
+
+      drawn.set(pin.id, signature);
     });
   }, [pins, ready]);
 
@@ -231,34 +250,24 @@ export function MapCanvas({
         const zoomDiffers = Math.abs(currentZoom - zoom) > 0.15;
         const method = zoomDiffers ? 'setCenter' : 'panTo';
 
-        console.log('[map-camera] start', {
-          method,
-          lat,
-          lng,
-          zoom,
-          duration: safeDuration,
-          t: Date.now(),
-        });
+        debugCamera('start', { method, lat, lng, zoom, duration: safeDuration });
 
-        // panTo в API 2.1 принимает массив точек [[lat, lng]], не [lat, lng].
-        // setZoom + panTo подряд срывает анимацию — зум меняем вместе с центром.
+        // flying: false — иначе на средних расстояниях Яндекс отъезжает зумом
+        // и возвращается обратно, и это читается как рывок.
         const animation = zoomDiffers
           ? map.setCenter([lat, lng], zoom, {
               duration: safeDuration,
-              timingFunction: 'ease-in-out',
+              timingFunction: CAMERA_EASE,
             })
           : map.panTo([[lat, lng]], {
               duration: safeDuration,
-              flying: true,
-              timingFunction: 'ease-in-out',
+              flying: false,
+              safe: false,
+              timingFunction: CAMERA_EASE,
             });
 
-        await waitForAnimation(animation, safeDuration + 80);
-        console.log('[map-camera] end', {
-          method,
-          elapsed: Math.round(performance.now() - started),
-          t: Date.now(),
-        });
+        await waitForAnimation(animation, safeDuration + 60);
+        debugCamera('end', { method, elapsed: Math.round(performance.now() - started) });
       },
       async fitAll(points, duration = 1400) {
         const map = mapRef.current;
@@ -266,32 +275,26 @@ export function MapCanvas({
         if (!map || !ymaps || points.length === 0) return;
         const safeDuration = Math.max(800, duration);
         const started = performance.now();
-        console.log('[map-camera] fitAll start', { duration: safeDuration, t: Date.now() });
-        if (points.length === 1) {
-          const animation = map.panTo([[points[0].lat, points[0].lng]], {
-            duration: safeDuration,
-            flying: true,
-            timingFunction: 'ease-in-out',
-          });
-          await waitForAnimation(animation, safeDuration + 80);
-          console.log('[map-camera] fitAll end', {
-            elapsed: Math.round(performance.now() - started),
-            t: Date.now(),
-          });
-          return;
-        }
-        const bounds = ymaps.util.bounds.fromPoints(points.map((p) => [p.lat, p.lng]));
-        const animation = map.setBounds(bounds, {
-          duration: safeDuration,
-          timingFunction: 'ease-in-out',
-          checkZoomRange: true,
-          zoomMargin: 48,
-        });
-        await waitForAnimation(animation, safeDuration + 80);
-        console.log('[map-camera] fitAll end', {
-          elapsed: Math.round(performance.now() - started),
-          t: Date.now(),
-        });
+        debugCamera('fitAll start', { duration: safeDuration });
+
+        const animation =
+          points.length === 1
+            ? map.panTo([[points[0].lat, points[0].lng]], {
+                duration: safeDuration,
+                flying: false,
+                safe: false,
+                timingFunction: CAMERA_EASE,
+              })
+            : map.setBounds(ymaps.util.bounds.fromPoints(points.map((p) => [p.lat, p.lng])), {
+                duration: safeDuration,
+                timingFunction: CAMERA_EASE,
+                // checkZoomRange делает сетевой запрос перед движением — это заметная задержка.
+                checkZoomRange: false,
+                zoomMargin: 48,
+              });
+
+        await waitForAnimation(animation, safeDuration + 60);
+        debugCamera('fitAll end', { elapsed: Math.round(performance.now() - started) });
       },
     }),
     [],

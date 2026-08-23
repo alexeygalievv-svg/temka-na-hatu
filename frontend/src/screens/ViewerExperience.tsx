@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { IntroSettings, MemoryPoint } from '../types';
 import { haptic } from '../telegram';
@@ -20,6 +20,11 @@ interface ViewerExperienceProps {
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Та же кривая, что у камеры, чтобы подложка не «щёлкала» на фоне плавного пана. */
+const CAMERA_EASE = [0.32, 0, 0.22, 1] as const;
+const FADE_IN_MS = 260;
+const FADE_OUT_MS = 420;
 
 /**
  * Экран получателя: интро → анимированное «путешествие» камеры по точкам
@@ -56,29 +61,31 @@ export function ViewerExperience({
       if (cancelledRef.current) return;
       setCurrentIndex(i);
 
-      // Пауза, чтобы предыдущий кадр карты стабилизировался — без сдвига центра.
-      await sleep(180);
+      // Подложку доводим до конца ДО старта камеры: иначе её анимация
+      // и движение карты борются за главный поток в первых кадрах.
       setCameraMoving(true);
+      await sleep(FADE_IN_MS + 60);
+      if (cancelledRef.current) return;
+
       await mapRef.current?.flyTo(points[i].lat, points[i].lng, 15.3, 1200);
       if (cancelledRef.current) return;
+
       setCameraMoving(false);
-      await sleep(280);
+      await sleep(FADE_OUT_MS);
       if (cancelledRef.current) return;
 
       setVisibleCount(i + 1);
       haptic('light');
-      await sleep(1100);
+      await sleep(1000);
     }
     if (cancelledRef.current) return;
     setCurrentIndex(-1);
     if (points.length > 1) {
-      await sleep(160);
       setCameraMoving(true);
-      await sleep(220);
+      await sleep(FADE_IN_MS + 60);
       await mapRef.current?.fitAll(points, 1400);
-      await sleep(140);
       setCameraMoving(false);
-      await sleep(320);
+      await sleep(FADE_OUT_MS);
     }
     if (cancelledRef.current) return;
     setStage('explore');
@@ -88,19 +95,27 @@ export function ViewerExperience({
   const activePoint = points.find((p) => p.id === activeId) ?? null;
   const activeIndex = activePoint ? points.indexOf(activePoint) : -1;
 
+  // Без мемоизации новый массив на каждый рендер заставлял карту
+  // переставлять все метки прямо во время перелёта.
+  const pins = useMemo(
+    () =>
+      shownPoints.map((p, i) => ({
+        id: p.id,
+        lat: p.lat,
+        lng: p.lng,
+        label: String(i + 1),
+        active: p.id === activeId,
+      })),
+    [shownPoints, activeId],
+  );
+
   return (
     <div className="viewer">
       <MapCanvas
         ref={mapRef}
         initialCenter={points[0] ?? { lat: 55.7512, lng: 37.6184 }}
         initialZoom={10}
-        pins={shownPoints.map((p, i) => ({
-          id: p.id,
-          lat: p.lat,
-          lng: p.lng,
-          label: String(i + 1),
-          active: p.id === activeId,
-        }))}
+        pins={pins}
         onPinClick={(id) => {
           if (stage !== 'explore') return;
           haptic('light');
@@ -112,8 +127,11 @@ export function ViewerExperience({
         className="viewer__camera-fade"
         aria-hidden="true"
         initial={false}
-        animate={{ opacity: cameraMoving ? 0.26 : 0 }}
-        transition={{ duration: cameraMoving ? 0.22 : 0.34, ease: 'easeInOut' }}
+        animate={{ opacity: cameraMoving ? 0.22 : 0 }}
+        transition={{
+          duration: (cameraMoving ? FADE_IN_MS : FADE_OUT_MS) / 1000,
+          ease: CAMERA_EASE,
+        }}
       />
 
       {/* Интро-занавес */}

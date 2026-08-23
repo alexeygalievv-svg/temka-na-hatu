@@ -149,8 +149,13 @@ body::after {
 .map-canvas__map {
   position: absolute;
   inset: 0;
-  /* Тёплый «бумажный» тон вместо стандартных цветов карты */
-  filter: saturate(0.72) sepia(0.22) brightness(1.03) contrast(0.95);
+  /*
+   * Тёплый «бумажный» тон. Фильтр пересчитывается на каждом кадре движения
+   * камеры, поэтому держим минимум функций — остальную теплоту даёт __tint.
+   */
+  filter: sepia(0.16) saturate(0.8);
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
 .map-canvas__map > div,
@@ -165,7 +170,7 @@ body::after {
   pointer-events: none;
   background:
     radial-gradient(120% 90% at 50% 40%, transparent 55%, rgba(120, 84, 50, 0.16) 100%),
-    linear-gradient(rgba(240, 220, 185, 0.1), rgba(240, 220, 185, 0.1));
+    linear-gradient(rgba(242, 221, 184, 0.16), rgba(242, 221, 184, 0.16));
 }
 
 .map-canvas__error {
