@@ -12,6 +12,8 @@ export interface MapPin {
 export interface MapHandle {
   flyTo: (lat: number, lng: number, zoom?: number, duration?: number) => Promise<void>;
   fitAll: (points: Array<{ lat: number; lng: number }>, duration?: number) => Promise<void>;
+  /** Прогревает HTTP-кеш тайлами вокруг точки — без второй карты и без движения камеры. */
+  preloadArea: (lat: number, lng: number, zoom?: number) => Promise<void>;
 }
 
 interface MapCanvasProps {
@@ -36,6 +38,32 @@ const CAMERA_EASE = 'cubic-bezier(0.32, 0, 0.22, 1)';
 const debugCamera = (label: string, payload: Record<string, unknown>) => {
   if (import.meta.env.DEV) console.log(`[map-camera] ${label}`, payload);
 };
+
+const TILE_SIZE = 256;
+/** Не даём предзагрузке зависнуть: дальше её прикрывает fade-overlay. */
+const PRELOAD_TIMEOUT_MS = 1200;
+const PRELOAD_MAX_TILES = 48;
+
+/**
+ * Ищет в коллекции слоёв карты живой тайловый слой (у него есть getTileUrl).
+ * Используем именно слой основной карты — он уже настроен на нужный язык и тему.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function findTileLayer(root: any): any {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let found: any = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const visit = (node: any) => {
+    if (found || !node) return;
+    if (typeof node.getTileUrl === 'function') {
+      found = node;
+      return;
+    }
+    if (typeof node.each === 'function') node.each(visit);
+  };
+  visit(root);
+  return found;
+}
 
 /** Ждём не меньше duration: промис Яндекса часто резолвится сразу и обрывал анимацию. */
 function waitForAnimation(animation: unknown, minMs: number): Promise<void> {
@@ -88,6 +116,8 @@ export function MapCanvas({
   const placemarksRef = useRef<Map<string, any>>(new Map());
   /** Последние отрисованные данные пина — чтобы не трогать DOM зря во время анимации. */
   const pinStateRef = useRef<Map<string, string>>(new Map());
+  /** URL тайлов, которые уже запрашивали, — не гоняем сеть повторно. */
+  const preloadedTilesRef = useRef<Set<string>>(new Set());
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -295,6 +325,60 @@ export function MapCanvas({
 
         await waitForAnimation(animation, safeDuration + 60);
         debugCamera('fitAll end', { elapsed: Math.round(performance.now() - started) });
+      },
+      async preloadArea(lat: number, lng: number, zoom = 15) {
+        const map = mapRef.current;
+        if (!map) return;
+        try {
+          const z = Math.round(zoom);
+          const projection = map.options.get('projection');
+          const layer = findTileLayer(map.layers);
+          if (!projection || !layer) return;
+
+          const [px, py] = projection.toGlobalPixels([lat, lng], z) as [number, number];
+          const [w, h] = map.container.getSize() as [number, number];
+
+          // Вьюпорт будущего кадра + один ряд тайлов запаса по краям.
+          const x1 = Math.floor((px - w / 2) / TILE_SIZE) - 1;
+          const x2 = Math.floor((px + w / 2) / TILE_SIZE) + 1;
+          const y1 = Math.floor((py - h / 2) / TILE_SIZE) - 1;
+          const y2 = Math.floor((py + h / 2) / TILE_SIZE) + 1;
+
+          const cache = preloadedTilesRef.current;
+          const jobs: Promise<void>[] = [];
+
+          outer: for (let x = x1; x <= x2; x++) {
+            for (let y = y1; y <= y2; y++) {
+              let url: string | null = null;
+              try {
+                url = layer.getTileUrl([x, y], z);
+              } catch {
+                continue;
+              }
+              if (!url || cache.has(url)) continue;
+              cache.add(url);
+              jobs.push(
+                new Promise<void>((resolve) => {
+                  const img = new Image();
+                  img.onload = () => resolve();
+                  img.onerror = () => resolve();
+                  img.src = url;
+                }),
+              );
+              if (jobs.length >= PRELOAD_MAX_TILES) break outer;
+            }
+          }
+
+          debugCamera('preload', { tiles: jobs.length, z });
+          if (jobs.length === 0) return;
+
+          await Promise.race([
+            Promise.all(jobs).then(() => undefined),
+            new Promise<void>((resolve) => window.setTimeout(resolve, PRELOAD_TIMEOUT_MS)),
+          ]);
+        } catch {
+          /* предзагрузка — только оптимизация, сценарий не ломаем */
+        }
       },
     }),
     [],

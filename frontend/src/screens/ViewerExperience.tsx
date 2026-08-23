@@ -61,22 +61,35 @@ export function ViewerExperience({
       if (cancelledRef.current) return;
       setCurrentIndex(i);
 
-      // Подложку доводим до конца ДО старта камеры: иначе её анимация
-      // и движение карты борются за главный поток в первых кадрах.
+      // Подложку доводим до конца ДО старта камеры, а параллельно грузим
+      // тайлы точки назначения — камера в это время неподвижна, конфликтов нет.
       setCameraMoving(true);
-      await sleep(FADE_IN_MS + 60);
+      await Promise.all([
+        sleep(FADE_IN_MS + 60),
+        mapRef.current?.preloadArea(points[i].lat, points[i].lng, 15.3) ?? Promise.resolve(),
+      ]);
       if (cancelledRef.current) return;
 
       await mapRef.current?.flyTo(points[i].lat, points[i].lng, 15.3, 1200);
       if (cancelledRef.current) return;
 
+      // Держим подложку ещё немного — страховка, если тайлы догружаются.
+      await sleep(180);
       setCameraMoving(false);
       await sleep(FADE_OUT_MS);
       if (cancelledRef.current) return;
 
       setVisibleCount(i + 1);
       haptic('light');
-      await sleep(1000);
+
+      // Пока получатель смотрит точку, заранее греем тайлы следующей.
+      const nextPoint = points[i + 1];
+      await Promise.all([
+        sleep(1000),
+        nextPoint
+          ? mapRef.current?.preloadArea(nextPoint.lat, nextPoint.lng, 15.3) ?? Promise.resolve()
+          : Promise.resolve(),
+      ]);
     }
     if (cancelledRef.current) return;
     setCurrentIndex(-1);
