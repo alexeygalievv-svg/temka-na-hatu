@@ -35,6 +35,15 @@ const PIN_H = 42;
 const PIN_FAN_ON_PX = 34;
 const PIN_FAN_OFF_PX = 46;
 
+function prefersTouchMap(): boolean {
+  if (typeof window === 'undefined') return false;
+  return (
+    window.matchMedia('(pointer: coarse)').matches ||
+    window.matchMedia('(hover: none)').matches ||
+    'ontouchstart' in window
+  );
+}
+
 function clusterMaxDistance<T extends { px: number; py: number }>(items: T[]): number {
   let max = 0;
   for (let i = 0; i < items.length; i++) {
@@ -589,17 +598,21 @@ export function MapCanvas({
         ymapsRef.current = ymaps;
         pinLayoutRef.current = pinLayoutClass(ymaps);
 
+        const touchMap = prefersTouchMap();
+
         map = new ymaps.Map(
           containerRef.current,
           {
             center: [initialCenter.lat, initialCenter.lng],
             zoom: initialZoom,
             controls: [],
-            behaviors: ['drag', 'multiTouch', 'scrollZoom'],
+            behaviors: touchMap ? ['drag', 'multiTouch'] : ['drag', 'scrollZoom'],
           },
           {
             suppressMapOpenBlock: true,
             maxAnimationZoomDifference: 23,
+            // На телефоне дробный зум при щипке — иначе зум «ступеньками».
+            avoidFractionalZoom: false,
             yandexMapDisablePoiInteractivity: true,
           },
         );
@@ -610,13 +623,22 @@ export function MapCanvas({
         } catch {
           /* штатная инерция и так включена */
         }
-        try {
-          map.behaviors.get('scrollZoom')?.options.set({
-            speed: 1.6,
-            maximumDelta: 2,
-          });
-        } catch {
-          /* колёсико останется со скоростью по умолчанию */
+        if (touchMap) {
+          try {
+            map.behaviors.get('multiTouch')?.options.set({ tremor: 1 });
+          } catch {
+            /* pinch останется со стандартной чувствительностью */
+          }
+          map.behaviors.disable('scrollZoom');
+        } else {
+          try {
+            map.behaviors.get('scrollZoom')?.options.set({
+              speed: 1.6,
+              maximumDelta: 2,
+            });
+          } catch {
+            /* колёсико останется со скоростью по умолчанию */
+          }
         }
 
         const DOUBLE_TAP_MS = 320;

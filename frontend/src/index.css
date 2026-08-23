@@ -75,6 +75,18 @@ body.map-gesturing::after {
   display: none;
 }
 
+@media (pointer: coarse) {
+  body.map-gesturing .builder__header,
+  body.map-gesturing .btn--ghost {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  body.map-gesturing .map-canvas__tint {
+    opacity: 0;
+  }
+}
+
 .app,
 .screen {
   position: absolute;
