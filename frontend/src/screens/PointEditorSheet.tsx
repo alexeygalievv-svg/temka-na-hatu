@@ -3,6 +3,7 @@ import { Sheet } from '../components/Sheet';
 import { Button } from '../components/Button';
 import { GalleryAsk } from '../components/GalleryAsk';
 import { useGalleryPicker } from '../lib/gallery';
+import { DateField } from '../components/DateField';
 import { blurOnEnter, hideSoftKeyboard } from '../lib/keyboard';
 
 interface PointEditorSheetProps {
@@ -68,16 +69,14 @@ export function PointEditorSheet({ point, index, onChange, onDelete, onClose }: 
             />
           </label>
 
-          <label className="editor__field">
+          <div className="editor__field">
             <span>Дата</span>
-            <input
-              type="date"
-              value={point.happenedOn ?? ''}
-              onChange={(e) => onChange({ happenedOn: e.target.value || null })}
-              onKeyDown={blurOnEnter}
+            <DateField
+              value={point.happenedOn}
+              onChange={(happenedOn) => onChange({ happenedOn })}
             />
             <span className="editor__field-hint">Необязательно — можно оставить пустой</span>
-          </label>
+          </div>
 
           <label className="editor__field">
             <span>История этого места</span>

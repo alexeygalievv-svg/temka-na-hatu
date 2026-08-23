@@ -300,7 +300,11 @@ function attachTileDiagnostics(map: any, container: HTMLElement | null): () => v
   } catch {
     logTile('map.tile-events-missing', { note: 'Map не бросает tileload/tileerror' });
   }
+  const onActionBegin = () => document.body.classList.add('map-gesturing');
+  const onActionEnd = () => document.body.classList.remove('map-gesturing');
   map.events.add('sizechange', onSizeChange);
+  map.events.add('actionbegin', onActionBegin);
+  map.events.add('actionend', onActionEnd);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const boundLayers = new Set<any>();
@@ -377,6 +381,9 @@ function attachTileDiagnostics(map: any, container: HTMLElement | null): () => v
       map.events.remove('tileload', onMapTileload);
       map.events.remove('tileerror', onMapTileerror);
       map.events.remove('sizechange', onSizeChange);
+      map.events.remove('actionbegin', onActionBegin);
+      map.events.remove('actionend', onActionEnd);
+      document.body.classList.remove('map-gesturing');
     } catch {
       /* destroy */
     }
@@ -592,9 +599,8 @@ export function MapCanvas({
           },
           {
             suppressMapOpenBlock: true,
-            maxAnimationZoomDifference: 16,
+            maxAnimationZoomDifference: 23,
             yandexMapDisablePoiInteractivity: true,
-            autoFitToViewport: 'always',
           },
         );
 
@@ -603,6 +609,14 @@ export function MapCanvas({
           map.behaviors.get('drag')?.options.set({ inertia: true });
         } catch {
           /* штатная инерция и так включена */
+        }
+        try {
+          map.behaviors.get('scrollZoom')?.options.set({
+            speed: 1.6,
+            maximumDelta: 2,
+          });
+        } catch {
+          /* колёсико останется со скоростью по умолчанию */
         }
 
         const DOUBLE_TAP_MS = 320;

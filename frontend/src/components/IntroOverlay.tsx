@@ -67,19 +67,19 @@ export function IntroOverlay({
       )}
       {showPhoto && (
         <motion.figure
-          className={`intro-photo${compact ? ' intro-photo--compact' : ''}`}
-          initial={{ opacity: 0, scale: 0.86, rotate: 8, y: 18 }}
+          className={`memory-card__photo intro-photo${compact ? ' intro-photo--compact' : ''}`}
+          initial={{ opacity: 0, scale: 0.94, rotate: 0 }}
           animate={{
             opacity: 1,
             scale: 1,
-            rotate: compact ? [-1.4, -0.3, -1.4] : [-2.2, -0.4, -2.2],
-            y: compact ? [0, -3, 0] : [0, -7, 0],
+            rotate: compact ? [-1.6, -0.6, -1.6] : [-1.6, -0.5, -1.6],
+            y: compact ? [0, -3, 0] : [0, -6, 0],
           }}
           transition={{
             opacity: { delay: 0.26, duration: 0.4 },
-            scale: { delay: 0.26, type: 'spring', stiffness: 180, damping: 16 },
-            rotate: { delay: 0.55, duration: compact ? 5.2 : 6.2, repeat: Infinity, ease: 'easeInOut' },
-            y: { delay: 0.55, duration: compact ? 5.2 : 6.2, repeat: Infinity, ease: 'easeInOut' },
+            scale: { delay: 0.26, type: 'spring', stiffness: 200, damping: 22 },
+            rotate: { delay: 0.5, duration: compact ? 5.2 : 6.2, repeat: Infinity, ease: 'easeInOut' },
+            y: { delay: 0.5, duration: compact ? 5.2 : 6.2, repeat: Infinity, ease: 'easeInOut' },
           }}
         >
           <img

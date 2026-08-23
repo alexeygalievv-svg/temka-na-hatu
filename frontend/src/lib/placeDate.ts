@@ -36,3 +36,12 @@ export function formatPlaceDate(raw?: string | null): string | null {
   if (!year || !monthName || !day) return null;
   return `${Number(day)} ${monthName} ${year}`;
 }
+
+/** «12.05.2024» — как в поле выбора даты. */
+export function formatPlaceDateNumeric(raw?: string | null): string | null {
+  const iso = normalizePlaceDate(raw);
+  if (!iso) return null;
+  const [, year, month, day] = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/) ?? [];
+  if (!year || !month || !day) return null;
+  return `${day}.${month}.${year}`;
+}
