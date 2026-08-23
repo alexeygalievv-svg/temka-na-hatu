@@ -47,6 +47,22 @@ function movementAngle(from: MemoryPoint | null, to: MemoryPoint): number {
   return (Math.atan2(dy, dx) * 180) / Math.PI;
 }
 
+function distanceKm(from: MemoryPoint, to: MemoryPoint): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(to.lat - from.lat);
+  const dLng = toRad(to.lng - from.lng);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(from.lat)) * Math.cos(toRad(to.lat)) * Math.sin(dLng / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/** Чем дальше точки — тем длиннее перелёт. Рядом ~1с, через город ~1.6с, далеко ~2.2с. */
+function flightDurationMs(from: MemoryPoint, to: MemoryPoint): number {
+  const km = distanceKm(from, to);
+  return Math.round(Math.min(2200, Math.max(1000, 1000 + Math.sqrt(km) * 280)));
+}
+
 /**
  * Экран получателя: интро → анимированное «путешествие» камеры по точкам
  * с поочерёдным появлением пинов → свободное исследование карты.
@@ -67,6 +83,7 @@ export function ViewerExperience({
   const [activeId, setActiveId] = useState<string | null>(null);
   const [speedTransition, setSpeedTransition] = useState(false);
   const [speedAngle, setSpeedAngle] = useState(-10);
+  const [speedDuration, setSpeedDuration] = useState(1200);
 
   useEffect(() => {
     cancelledRef.current = false;
@@ -92,16 +109,18 @@ export function ViewerExperience({
         await mapRef.current?.flyTo(points[i].lat, points[i].lng, 15.3, 900);
       } else {
         const angle = movementAngle(previous, points[i]);
+        const duration = flightDurationMs(previous, points[i]);
         setSpeedAngle(angle);
+        setSpeedDuration(duration);
         setSpeedTransition(true);
-        await sleep(120);
+        await sleep(140);
         if (cancelledRef.current) return;
         // Камера реально летит к следующей точке, пока по экрану идут streaks.
-        await mapRef.current?.dashTo(points[i].lat, points[i].lng, 15.3, 640);
+        await mapRef.current?.dashTo(points[i].lat, points[i].lng, 15.3, duration);
         if (cancelledRef.current) return;
-        await sleep(80);
+        await sleep(100);
         setSpeedTransition(false);
-        await sleep(220);
+        await sleep(240);
       }
       if (cancelledRef.current) return;
 
@@ -143,6 +162,7 @@ export function ViewerExperience({
       style={
         {
           '--streak-angle': `${speedAngle}deg`,
+          '--speed-duration': `${speedDuration}ms`,
           '--flight-x': `${Math.round(Math.cos((speedAngle * Math.PI) / 180) * 22)}px`,
           '--flight-y': `${Math.round(Math.sin((speedAngle * Math.PI) / 180) * 22)}px`,
         } as CSSProperties

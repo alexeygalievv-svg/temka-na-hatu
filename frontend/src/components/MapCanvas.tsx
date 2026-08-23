@@ -283,7 +283,7 @@ export function MapCanvas({
       async dashTo(lat: number, lng: number, zoom = 15, duration = 640) {
         const map = mapRef.current;
         if (!map) return;
-        const safeDuration = Math.max(480, Math.min(duration, 860));
+        const safeDuration = Math.max(900, Math.min(duration, 2300));
         const currentZoom = Number(map.getZoom?.() ?? zoom);
         if (Math.abs(currentZoom - zoom) > 0.4) {
           map.setZoom(zoom, { duration: 0 });
