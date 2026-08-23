@@ -237,11 +237,6 @@ body::after {
   align-items: center;
   transform-origin: 50% 100%;
   animation: pin-drop 0.65s var(--ease-out) both;
-  transition: transform 0.25s var(--ease-out);
-}
-
-.map-pin:hover .map-pin__inner {
-  transform: translateY(-3px);
 }
 
 .map-pin__heart-wrap {
@@ -249,7 +244,6 @@ body::after {
   width: 40px;
   height: 42px;
   filter: drop-shadow(0 6px 14px rgba(120, 50, 20, 0.42));
-  transition: transform 0.25s var(--ease-out), filter 0.25s var(--ease-out);
 }
 
 .map-pin__heart-svg {

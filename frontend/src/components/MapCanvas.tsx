@@ -30,31 +30,47 @@ interface MapCanvasProps {
 const PIN_W = 40;
 const PIN_H = 42;
 /** Веер только когда сердечки уже полностью слиплись и не отличить, одно там или несколько. */
-const PIN_STACK_PX = 8;
+const PIN_FAN_ON_PX = 10;
+/** Выключается с запасом, чтобы при зуме не дёргалось на границе. */
+const PIN_FAN_OFF_PX = 28;
 
-function clusterByDistance<T extends { px: number; py: number }>(items: T[], maxDist: number): T[][] {
-  const clusters: T[][] = [];
-  const assigned = new Array(items.length).fill(false);
+function clusterMaxDistance<T extends { px: number; py: number }>(items: T[]): number {
+  let max = 0;
   for (let i = 0; i < items.length; i++) {
-    if (assigned[i]) continue;
-    const cluster = [items[i]];
-    assigned[i] = true;
-    let changed = true;
-    while (changed) {
-      changed = false;
-      for (let j = 0; j < items.length; j++) {
-        if (assigned[j]) continue;
-        const next = items[j];
-        if (cluster.some((item) => Math.hypot(item.px - next.px, item.py - next.py) < maxDist)) {
-          cluster.push(next);
-          assigned[j] = true;
-          changed = true;
-        }
-      }
+    for (let j = i + 1; j < items.length; j++) {
+      max = Math.max(max, Math.hypot(items[i].px - items[j].px, items[i].py - items[j].py));
     }
-    clusters.push(cluster);
   }
-  return clusters;
+  return max;
+}
+
+function clusterKey(items: Array<{ pin: MapPin }>): string {
+  return items
+    .map((item) => item.pin.id)
+    .sort()
+    .join('|');
+}
+
+function shouldFanCluster(
+  cluster: Array<{ pin: MapPin; px: number; py: number }>,
+  fanLatch: Map<string, boolean>,
+): boolean {
+  if (cluster.length <= 1) return false;
+  const key = clusterKey(cluster);
+  const spread = clusterMaxDistance(cluster);
+  const wasFanned = fanLatch.get(key) ?? false;
+  if (wasFanned) {
+    if (spread > PIN_FAN_OFF_PX) {
+      fanLatch.set(key, false);
+      return false;
+    }
+    return true;
+  }
+  if (spread < PIN_FAN_ON_PX) {
+    fanLatch.set(key, true);
+    return true;
+  }
+  return false;
 }
 
 /** Небольшой разворот вокруг нижней точки — как колода карт, без сдвига по карте. */
@@ -72,8 +88,9 @@ function computePinFans(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   map: any,
   pins: MapPin[],
-): Map<string, { angle: number; z: number }> {
-  const offsets = new Map<string, { angle: number; z: number }>();
+  fanLatch: Map<string, boolean>,
+): Map<string, { angle: number; z: number; clickId: string; interactive: boolean }> {
+  const offsets = new Map<string, { angle: number; z: number; clickId: string; interactive: boolean }>();
   if (pins.length === 0) return offsets;
   try {
     const zoom = Number(map.getZoom?.() ?? 10);
@@ -82,17 +99,33 @@ function computePinFans(
       const [px, py] = projection.toGlobalPixels([pin.lat, pin.lng], zoom) as [number, number];
       return { pin, px, py };
     });
-    for (const cluster of clusterByDistance(items, PIN_STACK_PX)) {
-      const angles = fanAngles(cluster.length);
+    const assigned = new Set<string>();
+    for (const seed of items) {
+      if (assigned.has(seed.pin.id)) continue;
+      const cluster = items
+        .filter(
+          (item) =>
+            !assigned.has(item.pin.id) &&
+            Math.hypot(item.px - seed.px, item.py - seed.py) < PIN_FAN_OFF_PX,
+        )
+        .sort((a, b) => Number(a.pin.label) - Number(b.pin.label));
+      cluster.forEach((item) => assigned.add(item.pin.id));
+      const fanned = shouldFanCluster(cluster, fanLatch);
+      const angles = fanned ? fanAngles(cluster.length) : cluster.map(() => 0);
+      const topPin = cluster[cluster.length - 1]?.pin;
       cluster.forEach((item, index) => {
         offsets.set(item.pin.id, {
           angle: angles[index] ?? 0,
           z: item.pin.active ? 1300 : 1000 + index,
+          clickId: fanned && topPin ? topPin.id : item.pin.id,
+          interactive: true,
         });
       });
     }
   } catch {
-    for (const pin of pins) offsets.set(pin.id, { angle: 0, z: 1000 });
+    for (const pin of pins) {
+      offsets.set(pin.id, { angle: 0, z: 1000, clickId: pin.id, interactive: true });
+    }
   }
   return offsets;
 }
@@ -517,6 +550,8 @@ export function MapCanvas({
   const placemarksRef = useRef<Map<string, any>>(new Map());
   /** Последние отрисованные данные пина — чтобы не трогать DOM зря во время анимации. */
   const pinStateRef = useRef<Map<string, string>>(new Map());
+  /** Запоминаем, был ли веер у кластера — гистерезис против дёрганья на границе зума. */
+  const pinFanLatchRef = useRef<Map<string, boolean>>(new Map());
   /** URL тайлов, которые уже скачали — не гоняем сеть повторно. */
   const preloadedTilesRef = useRef<Set<string>>(new Set());
   const readyWaitersRef = useRef<Set<() => void>>(new Set());
@@ -645,16 +680,17 @@ export function MapCanvas({
     }
 
     const applyPins = () => {
-      const fans = computePinFans(map, pins);
+      const fans = computePinFans(map, pins, pinFanLatchRef.current);
       pins.forEach((pin) => {
         let placemark = existing.get(pin.id);
-        const fan = fans.get(pin.id) ?? { angle: 0, z: 1000 };
+        const fan = fans.get(pin.id) ?? { angle: 0, z: 1000, clickId: pin.id, interactive: true };
         const props = {
           label: pin.label,
           activeClass: pin.active ? 'map-pin--active' : '',
           fanStyle: `--fan-angle:${fan.angle}deg;`,
+          clickId: fan.clickId,
         };
-        const signature = `${pin.label}|${props.activeClass}|${pin.lat}|${pin.lng}|${fan.angle}`;
+        const signature = `${pin.label}|${props.activeClass}|${pin.lat}|${pin.lng}|${fan.angle}|${fan.clickId}|${fan.interactive}`;
 
         if (!placemark) {
           placemark = new ymaps.Placemark([pin.lat, pin.lng], props, {
@@ -668,11 +704,12 @@ export function MapCanvas({
             hasBalloon: false,
             hasHint: false,
             zIndex: fan.z,
-            interactivityModel: 'default#opaque',
+            interactivityModel: fan.interactive ? 'default#opaque' : 'default#silent',
           });
           placemark.events.add('click', (event: { stopPropagation: () => void }) => {
             event.stopPropagation();
-            pinClickRef.current?.(pin.id);
+            const clickId = placemark.properties.get('clickId') as string;
+            pinClickRef.current?.(clickId);
           });
           map.geoObjects.add(placemark);
           existing.set(pin.id, placemark);
@@ -682,6 +719,7 @@ export function MapCanvas({
           placemark.options.set({
             iconImageOffset: [-PIN_W / 2, -PIN_H],
             zIndex: fan.z,
+            interactivityModel: fan.interactive ? 'default#opaque' : 'default#silent',
           });
         }
 
@@ -691,18 +729,10 @@ export function MapCanvas({
 
     applyPins();
 
-    let lastZoomKey = Math.round(Number(map.getZoom?.() ?? 0) * 4);
-    const onBounds = () => {
-      const zoomKey = Math.round(Number(map.getZoom?.() ?? 0) * 4);
-      if (zoomKey === lastZoomKey) return;
-      lastZoomKey = zoomKey;
-      applyPins();
-    };
-    map.events.add('boundschange', onBounds);
+    // Веер пересчитываем только после жеста. Во время pinch/pan иначе дёргается.
     map.events.add('actionend', applyPins);
 
     return () => {
-      map.events.remove('boundschange', onBounds);
       map.events.remove('actionend', applyPins);
     };
   }, [pins, ready]);
