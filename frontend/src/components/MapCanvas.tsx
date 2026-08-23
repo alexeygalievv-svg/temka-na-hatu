@@ -35,6 +35,8 @@ const PIN_H = 42;
  * что CSS transition-timing-function, поэтому cubic-bezier допустим.
  */
 const CAMERA_EASE = 'cubic-bezier(0.32, 0, 0.22, 1)';
+/** Whip pan: короткий разгон, длинный пролёт, ощутимое торможение. */
+const WHIP_EASE = 'cubic-bezier(0.62, 0.02, 0.18, 1)';
 
 /** Ждём не меньше duration: промис Яндекса часто резолвится сразу и обрывал анимацию. */
 function waitForAnimation(animation: unknown, minMs: number): Promise<void> {
@@ -280,10 +282,10 @@ export function MapCanvas({
 
         await waitForAnimation(animation, safeDuration + 60);
       },
-      async dashTo(lat: number, lng: number, zoom = 15, duration = 640) {
+      async dashTo(lat: number, lng: number, zoom = 15, duration = 1200) {
         const map = mapRef.current;
         if (!map) return;
-        const safeDuration = Math.max(900, Math.min(duration, 2300));
+        const safeDuration = Math.max(900, Math.min(duration, 3500));
         const currentZoom = Number(map.getZoom?.() ?? zoom);
         if (Math.abs(currentZoom - zoom) > 0.4) {
           map.setZoom(zoom, { duration: 0 });
@@ -293,7 +295,7 @@ export function MapCanvas({
           duration: safeDuration,
           flying: true,
           safe: false,
-          timingFunction: 'ease-in-out',
+          timingFunction: WHIP_EASE,
         });
         await waitForAnimation(animation, safeDuration + 40);
       },

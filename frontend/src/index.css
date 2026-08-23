@@ -298,9 +298,12 @@ body::after {
     transform: translateY(-26px) scale(0.2);
     opacity: 0;
   }
-  60% {
-    transform: translateY(2px) scale(1.06);
+  58% {
+    transform: translateY(5px) scale(1.14);
     opacity: 1;
+  }
+  78% {
+    transform: translateY(-3px) scale(0.96);
   }
   100% {
     transform: translateY(0) scale(1);
@@ -810,125 +813,42 @@ body::after {
 
 /* ============ Экран получателя ============ */
 
-.viewer--speed-transition .map-canvas__map {
-  animation: camera-speed-map var(--speed-duration, 1200ms) cubic-bezier(0.18, 0.82, 0.26, 1) both;
+.viewer--whip-pan .map-canvas {
+  animation: whip-pan-cam var(--whip-duration, 1200ms) cubic-bezier(0.62, 0.02, 0.18, 1) both;
   will-change: transform, filter;
 }
 
-.viewer__speed-lines {
-  position: absolute;
-  inset: -18%;
-  z-index: 9;
-  pointer-events: none;
-  opacity: 0;
-  overflow: hidden;
-  transform: rotate(var(--streak-angle));
-}
-
-.viewer--speed-transition .viewer__speed-lines {
-  animation: speed-lines-layer var(--speed-duration, 1200ms) cubic-bezier(0.18, 0.82, 0.26, 1) both;
-}
-
-.viewer__speed-line {
-  position: absolute;
-  left: -55vw;
-  top: var(--streak-y);
-  width: var(--streak-len);
-  height: var(--streak-h);
-  border-radius: 999px;
-  opacity: 0;
-  transform: translate3d(var(--streak-x), 0, 0);
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 247, 236, 0.18) 10%,
-    rgba(255, 247, 236, var(--streak-opacity)) 48%,
-    rgba(255, 247, 236, 0.16) 78%,
-    transparent 100%
-  );
-  box-shadow:
-    0 0 10px rgba(255, 247, 236, 0.34),
-    0 0 24px rgba(194, 89, 50, 0.18);
-  filter: blur(0.8px);
-}
-
-.viewer--speed-transition .viewer__speed-line {
-  animation: speed-line-flight calc(var(--speed-duration, 1200ms) * 0.78) cubic-bezier(0.12, 0.78, 0.22, 1) both;
-  animation-delay: var(--streak-delay);
-}
-
-@keyframes camera-speed-map {
+@keyframes whip-pan-cam {
   0% {
-    transform: translate3d(0, 0, 0) scale(1);
-    filter: sepia(0.16) saturate(0.8) blur(0);
+    transform: scale(1) rotate(0deg);
+    filter: blur(0);
   }
-  18% {
-    transform: translate3d(calc(var(--flight-x) * -0.35), calc(var(--flight-y) * -0.35), 0) scale(1.04);
-    filter: sepia(0.16) saturate(0.88) blur(3px);
+  10% {
+    transform: scale(1.015) rotate(calc(var(--whip-rotate, 0deg) * 0.25));
+    filter: blur(1.5px);
   }
-  42% {
-    transform: translate3d(calc(var(--flight-x) * -1), calc(var(--flight-y) * -1), 0) scale(1.1);
-    filter: sepia(0.12) saturate(0.94) blur(10px);
+  48% {
+    transform: scale(1.06) rotate(var(--whip-rotate, 0deg));
+    filter: blur(8px);
   }
-  68% {
-    transform: translate3d(calc(var(--flight-x) * -0.4), calc(var(--flight-y) * -0.4), 0) scale(1.05);
-    filter: sepia(0.14) saturate(0.88) blur(6px);
+  78% {
+    transform: scale(1.025) rotate(calc(var(--whip-rotate, 0deg) * 0.2));
+    filter: blur(2px);
+  }
+  90% {
+    transform: scale(1.035) rotate(0deg);
+    filter: blur(0);
   }
   100% {
-    transform: translate3d(0, 0, 0) scale(1);
-    filter: sepia(0.16) saturate(0.8) blur(0);
-  }
-}
-
-@keyframes speed-lines-layer {
-  0% {
-    opacity: 0;
-  }
-  18% {
-    opacity: 0.45;
-  }
-  42% {
-    opacity: 0.95;
-  }
-  64% {
-    opacity: 0.78;
-  }
-  100% {
-    opacity: 0;
-  }
-}
-
-@keyframes speed-line-flight {
-  0% {
-    opacity: 0;
-    transform: translate3d(calc(var(--streak-x) - 28vw), 0, 0) scaleX(0.65);
-  }
-  18% {
-    opacity: 0.32;
-  }
-  45% {
-    opacity: var(--streak-opacity);
-    transform: translate3d(calc(var(--streak-x) + 58vw), 0, 0) scaleX(1.1);
-  }
-  76% {
-    opacity: 0.24;
-  }
-  100% {
-    opacity: 0;
-    transform: translate3d(calc(var(--streak-x) + 150vw), 0, 0) scaleX(1.35);
+    transform: scale(1) rotate(0deg);
+    filter: blur(0);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .viewer--speed-transition .map-canvas__map {
+  .viewer--whip-pan .map-canvas {
     animation: none;
-    filter: sepia(0.16) saturate(0.8) blur(4px);
-  }
-
-  .viewer--speed-transition .viewer__speed-lines,
-  .viewer--speed-transition .viewer__speed-line {
-    animation: none;
-    opacity: 0;
+    filter: blur(3px);
   }
 }
 

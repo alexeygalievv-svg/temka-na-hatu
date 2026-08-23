@@ -6,6 +6,7 @@ import { MapCanvas, type MapHandle } from '../components/MapCanvas';
 import { MemoryCard } from '../components/MemoryCard';
 import { Button } from '../components/Button';
 import { IntroOverlay } from '../components/IntroOverlay';
+import { haversineKm, whipDurationMs, whipRotateDeg } from '../lib/geo';
 
 type Stage = 'intro' | 'reveal' | 'explore';
 
@@ -21,47 +22,8 @@ interface ViewerExperienceProps {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const SPEED_STREAKS = [
-  { y: 7, x: -18, len: 28, h: 1.4, opacity: 0.36, delay: 0 },
-  { y: 12, x: 36, len: 42, h: 2.2, opacity: 0.48, delay: 34 },
-  { y: 18, x: -42, len: 68, h: 2.8, opacity: 0.55, delay: 66 },
-  { y: 23, x: 18, len: 24, h: 1.3, opacity: 0.3, delay: 112 },
-  { y: 29, x: -10, len: 54, h: 2.4, opacity: 0.5, delay: 26 },
-  { y: 34, x: 48, len: 76, h: 3.2, opacity: 0.58, delay: 78 },
-  { y: 40, x: -34, len: 36, h: 1.7, opacity: 0.38, delay: 126 },
-  { y: 46, x: 10, len: 88, h: 3.4, opacity: 0.62, delay: 44 },
-  { y: 51, x: -50, len: 58, h: 2.5, opacity: 0.46, delay: 92 },
-  { y: 57, x: 28, len: 32, h: 1.5, opacity: 0.34, delay: 150 },
-  { y: 63, x: -24, len: 96, h: 3.6, opacity: 0.64, delay: 18 },
-  { y: 68, x: 44, len: 48, h: 2.1, opacity: 0.44, delay: 104 },
-  { y: 74, x: -12, len: 72, h: 2.8, opacity: 0.52, delay: 58 },
-  { y: 80, x: 22, len: 26, h: 1.4, opacity: 0.32, delay: 136 },
-  { y: 86, x: -40, len: 62, h: 2.6, opacity: 0.48, delay: 8 },
-] as const;
-
-function movementAngle(from: MemoryPoint | null, to: MemoryPoint): number {
-  if (!from) return -10;
-  const dx = to.lng - from.lng;
-  const dy = -(to.lat - from.lat);
-  if (Math.abs(dx) + Math.abs(dy) < 0.000001) return -10;
-  return (Math.atan2(dy, dx) * 180) / Math.PI;
-}
-
-function distanceKm(from: MemoryPoint, to: MemoryPoint): number {
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-  const dLat = toRad(to.lat - from.lat);
-  const dLng = toRad(to.lng - from.lng);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(from.lat)) * Math.cos(toRad(to.lat)) * Math.sin(dLng / 2) ** 2;
-  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-/** Чем дальше точки — тем длиннее перелёт. Рядом ~1с, через город ~1.6с, далеко ~2.2с. */
-function flightDurationMs(from: MemoryPoint, to: MemoryPoint): number {
-  const km = distanceKm(from, to);
-  return Math.round(Math.min(2200, Math.max(1000, 1000 + Math.sqrt(km) * 280)));
-}
+/** Пауза после прибытия, чтобы успеть рассмотреть точку. */
+const ARRIVAL_HOLD_MS = 1350;
 
 /**
  * Экран получателя: интро → анимированное «путешествие» камеры по точкам
@@ -81,9 +43,9 @@ export function ViewerExperience({
   const [visibleCount, setVisibleCount] = useState(0);
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [speedTransition, setSpeedTransition] = useState(false);
-  const [speedAngle, setSpeedAngle] = useState(-10);
-  const [speedDuration, setSpeedDuration] = useState(1200);
+  const [whipping, setWhipping] = useState(false);
+  const [whipDuration, setWhipDuration] = useState(1200);
+  const [whipRotate, setWhipRotate] = useState(0);
 
   useEffect(() => {
     cancelledRef.current = false;
@@ -108,25 +70,21 @@ export function ViewerExperience({
       if (!previous) {
         await mapRef.current?.flyTo(points[i].lat, points[i].lng, 15.3, 900);
       } else {
-        const angle = movementAngle(previous, points[i]);
-        const duration = flightDurationMs(previous, points[i]);
-        setSpeedAngle(angle);
-        setSpeedDuration(duration);
-        setSpeedTransition(true);
-        await sleep(140);
-        if (cancelledRef.current) return;
-        // Камера реально летит к следующей точке, пока по экрану идут streaks.
+        const distanceKm = haversineKm(previous, points[i]);
+        const duration = whipDurationMs(distanceKm);
+        setWhipDuration(duration);
+        setWhipRotate(whipRotateDeg(previous, points[i]));
+        setWhipping(true);
         await mapRef.current?.dashTo(points[i].lat, points[i].lng, 15.3, duration);
         if (cancelledRef.current) return;
-        await sleep(100);
-        setSpeedTransition(false);
-        await sleep(240);
+        setWhipping(false);
+        await sleep(90);
       }
       if (cancelledRef.current) return;
 
       setVisibleCount(i + 1);
       haptic('light');
-      await sleep(1200);
+      await sleep(ARRIVAL_HOLD_MS);
     }
     if (cancelledRef.current) return;
     setCurrentIndex(-1);
@@ -158,13 +116,11 @@ export function ViewerExperience({
 
   return (
     <div
-      className={`viewer${speedTransition ? ' viewer--speed-transition' : ''}`}
+      className={`viewer${whipping ? ' viewer--whip-pan' : ''}`}
       style={
         {
-          '--streak-angle': `${speedAngle}deg`,
-          '--speed-duration': `${speedDuration}ms`,
-          '--flight-x': `${Math.round(Math.cos((speedAngle * Math.PI) / 180) * 22)}px`,
-          '--flight-y': `${Math.round(Math.sin((speedAngle * Math.PI) / 180) * 22)}px`,
+          '--whip-duration': `${whipDuration}ms`,
+          '--whip-rotate': `${whipRotate}deg`,
         } as CSSProperties
       }
     >
@@ -179,29 +135,6 @@ export function ViewerExperience({
           setActiveId(id);
         }}
       />
-
-      <div
-        className="viewer__speed-lines"
-        aria-hidden="true"
-        style={{ '--streak-angle': `${speedAngle}deg` } as CSSProperties}
-      >
-        {SPEED_STREAKS.map((streak, index) => (
-          <span
-            key={index}
-            className="viewer__speed-line"
-            style={
-              {
-                '--streak-y': `${streak.y}%`,
-                '--streak-x': `${streak.x}vw`,
-                '--streak-len': `${streak.len}vw`,
-                '--streak-h': `${streak.h}px`,
-                '--streak-opacity': streak.opacity,
-                '--streak-delay': `${streak.delay}ms`,
-              } as CSSProperties
-            }
-          />
-        ))}
-      </div>
 
       {/* Интро-занавес */}
       <AnimatePresence>
