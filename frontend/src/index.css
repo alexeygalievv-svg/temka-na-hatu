@@ -227,6 +227,8 @@ body::after {
   height: 42px;
   cursor: pointer;
   box-sizing: border-box;
+  transform-origin: 50% 100%;
+  transform: rotate(var(--fan-angle, 0deg));
 }
 
 .map-pin__inner {
@@ -922,10 +924,11 @@ body::after {
   align-items: center;
   gap: 12px;
   background: rgba(255, 250, 241, 0.94);
-  border-radius: 999px;
-  padding: 10px 22px 10px 10px;
+  border-radius: 24px;
+  padding: 10px 18px 10px 10px;
   box-shadow: var(--shadow-deep);
-  max-width: calc(100% - 48px);
+  max-width: calc(100% - 24px);
+  width: max-content;
 }
 
 .viewer__caption-num {
@@ -948,9 +951,12 @@ body::after {
   font-size: 19px;
   font-weight: 600;
   color: var(--ink);
-  white-space: nowrap;
+  line-height: 1.2;
+  overflow-wrap: break-word;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .viewer__topbar {

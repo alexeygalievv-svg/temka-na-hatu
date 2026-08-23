@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { hideSoftKeyboard } from '../lib/keyboard';
 
 interface SheetProps {
   open: boolean;
@@ -32,6 +33,7 @@ export function Sheet({ open, onClose, title, children }: SheetProps) {
             drag="y"
             dragConstraints={{ top: 0, bottom: 0 }}
             dragElastic={{ top: 0, bottom: 0.5 }}
+            onPointerDown={hideSoftKeyboard}
             onDragEnd={(_, info) => {
               if (info.offset.y > 90 || info.velocity.y > 500) onClose();
             }}

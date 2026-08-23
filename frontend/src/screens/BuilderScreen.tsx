@@ -8,6 +8,7 @@ import { BuilderOnboarding } from '../components/BuilderOnboarding';
 import { PointEditorSheet } from './PointEditorSheet';
 import { PointListSheet } from './PointListSheet';
 import { IntroEditorSheet } from './IntroEditorSheet';
+import { blurOnEnter, hideSoftKeyboard } from '../lib/keyboard';
 
 const MOSCOW = { lat: 55.7512, lng: 37.6184 };
 const ONBOARDING_KEY = 'builder-onboarding-seen';
@@ -119,7 +120,7 @@ export function BuilderScreen({
   }
 
   return (
-    <div className="builder">
+    <div className="builder" onPointerDown={hideSoftKeyboard}>
       <MapCanvas
         ref={mapRef}
         initialCenter={points[0] ?? MOSCOW}
@@ -141,6 +142,8 @@ export function BuilderScreen({
           className="builder__title"
           value={title}
           onChange={(e) => onTitleChange(e.target.value)}
+          onKeyDown={blurOnEnter}
+          enterKeyHint="done"
           placeholder="Название карты"
           maxLength={60}
         />

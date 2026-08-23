@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import type { DraftPoint } from '../types';
 import { Sheet } from '../components/Sheet';
 import { Button } from '../components/Button';
+import { blurOnEnter, hideSoftKeyboard } from '../lib/keyboard';
 
 interface PointEditorSheetProps {
   point: DraftPoint | null;
@@ -61,6 +62,8 @@ export function PointEditorSheet({ point, index, onChange, onDelete, onClose }: 
             <input
               value={point.title}
               onChange={(e) => onChange({ title: e.target.value })}
+              onKeyDown={blurOnEnter}
+              enterKeyHint="done"
               placeholder="Например, «Наше первое свидание»"
               maxLength={80}
             />
@@ -71,6 +74,7 @@ export function PointEditorSheet({ point, index, onChange, onDelete, onClose }: 
             <textarea
               value={point.description}
               onChange={(e) => onChange({ description: e.target.value })}
+              enterKeyHint="done"
               placeholder="Расскажите, что здесь произошло…"
               rows={4}
               maxLength={1000}
@@ -81,7 +85,13 @@ export function PointEditorSheet({ point, index, onChange, onDelete, onClose }: 
             <Button variant="danger" onClick={onDelete}>
               Удалить
             </Button>
-            <Button wide onClick={onClose}>
+            <Button
+              wide
+              onClick={() => {
+                hideSoftKeyboard();
+                onClose();
+              }}
+            >
               Готово
             </Button>
           </div>

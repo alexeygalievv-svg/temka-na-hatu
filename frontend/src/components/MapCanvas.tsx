@@ -13,7 +13,7 @@ export interface MapHandle {
   waitUntilReady: () => Promise<void>;
   /** Прогревает тайлы по маршруту камеры, пока карта ещё стоит. */
   preloadRoute: (lat: number, lng: number, zoom?: number) => Promise<void>;
-  flyTo: (lat: number, lng: number, zoom?: number, duration?: number) => void;
+  flyTo: (lat: number, lng: number, zoom?: number, duration?: number) => Promise<void>;
   fitAll: (points: Array<{ lat: number; lng: number }>, duration?: number) => void;
 }
 
@@ -29,11 +29,323 @@ interface MapCanvasProps {
 /** Размеры пина — должны совпадать с CSS и iconImageOffset. */
 const PIN_W = 40;
 const PIN_H = 42;
+/** Веер только когда сердечки уже полностью слиплись и не отличить, одно там или несколько. */
+const PIN_STACK_PX = 8;
+
+function clusterByDistance<T extends { px: number; py: number }>(items: T[], maxDist: number): T[][] {
+  const clusters: T[][] = [];
+  const assigned = new Array(items.length).fill(false);
+  for (let i = 0; i < items.length; i++) {
+    if (assigned[i]) continue;
+    const cluster = [items[i]];
+    assigned[i] = true;
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (let j = 0; j < items.length; j++) {
+        if (assigned[j]) continue;
+        const next = items[j];
+        if (cluster.some((item) => Math.hypot(item.px - next.px, item.py - next.py) < maxDist)) {
+          cluster.push(next);
+          assigned[j] = true;
+          changed = true;
+        }
+      }
+    }
+    clusters.push(cluster);
+  }
+  return clusters;
+}
+
+/** Небольшой разворот вокруг нижней точки — как колода карт, без сдвига по карте. */
+function fanAngles(count: number): number[] {
+  if (count <= 1) return [0];
+  if (count === 2) return [-11, 10];
+  const max = Math.min(20, 7 + count * 2.2);
+  return Array.from({ length: count }, (_, i) => {
+    const t = i / (count - 1);
+    return Math.round((-max + t * 2 * max) * 10) / 10;
+  });
+}
+
+function computePinFans(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  map: any,
+  pins: MapPin[],
+): Map<string, { angle: number; z: number }> {
+  const offsets = new Map<string, { angle: number; z: number }>();
+  if (pins.length === 0) return offsets;
+  try {
+    const zoom = Number(map.getZoom?.() ?? 10);
+    const projection = map.options.get('projection');
+    const items = pins.map((pin) => {
+      const [px, py] = projection.toGlobalPixels([pin.lat, pin.lng], zoom) as [number, number];
+      return { pin, px, py };
+    });
+    for (const cluster of clusterByDistance(items, PIN_STACK_PX)) {
+      const angles = fanAngles(cluster.length);
+      cluster.forEach((item, index) => {
+        offsets.set(item.pin.id, {
+          angle: angles[index] ?? 0,
+          z: item.pin.active ? 1300 : 1000 + index,
+        });
+      });
+    }
+  } catch {
+    for (const pin of pins) offsets.set(pin.id, { angle: 0, z: 1000 });
+  }
+  return offsets;
+}
 
 const TILE_SIZE = 256;
 const PRELOAD_TIMEOUT_MS = 4000;
 const PRELOAD_MAX_TILES = 96;
 const FIRST_TILES_TIMEOUT_MS = 5000;
+
+const sleep = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+
+type TileLogEntry = {
+  t: number;
+  kind: string;
+  [key: string]: unknown;
+};
+
+type TileFlight = {
+  id: number;
+  mapTileload: number;
+  mapTileerror: number;
+  layerTileload: number;
+  layerTileerror: number;
+  tileloadchange: number;
+  readyMin: number;
+  readyMax: number;
+  totalMax: number;
+  incompleteTicks: number;
+  sizeChanges: number;
+};
+
+function tileWindow() {
+  const w = window as Window & {
+    __mapTileLog?: TileLogEntry[];
+    __mapTileSummary?: Record<string, number>;
+    __mapTileFlight?: TileFlight | null;
+  };
+  if (!w.__mapTileLog) w.__mapTileLog = [];
+  if (!w.__mapTileSummary) {
+    w.__mapTileSummary = {
+      mapTileload: 0,
+      mapTileerror: 0,
+      layerTileload: 0,
+      layerTileerror: 0,
+      layerTileloadchange: 0,
+      sizechange: 0,
+    };
+  }
+  return w;
+}
+
+function logTile(kind: string, extra: Record<string, unknown> = {}) {
+  const w = tileWindow();
+  const flight = w.__mapTileFlight;
+  const entry: TileLogEntry = {
+    t: Math.round(performance.now()),
+    kind,
+    flight: flight?.id ?? null,
+    ...extra,
+  };
+  w.__mapTileLog!.push(entry);
+  if (w.__mapTileLog!.length > 500) w.__mapTileLog!.splice(0, 120);
+  console.log('[ymaps-tiles]', kind, extra);
+}
+
+function bump(key: keyof NonNullable<ReturnType<typeof tileWindow>['__mapTileSummary']>) {
+  const summary = tileWindow().__mapTileSummary;
+  if (summary) summary[key] = (summary[key] ?? 0) + 1;
+}
+
+/** Ждём не меньше duration: промис Яндекса часто резолвится сразу. */
+function waitForAnimation(animation: unknown, minMs: number): Promise<void> {
+  const minWait = minMs > 0 ? sleep(minMs) : Promise.resolve();
+  const anim =
+    animation &&
+    typeof animation === 'object' &&
+    'then' in animation &&
+    typeof (animation as { then?: unknown }).then === 'function'
+      ? Promise.resolve(animation as PromiseLike<unknown>).then(
+          () => undefined,
+          () => undefined,
+        )
+      : Promise.resolve();
+  return Promise.all([minWait, anim]).then(() => undefined);
+}
+
+/** Расстояние между точками в глобальных пикселях на текущем зуме. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function pixelDistance(map: any, from: [number, number], to: [number, number], zoom: number): number {
+  try {
+    const projection = map.options.get('projection');
+    const a = projection.toGlobalPixels(from, zoom) as [number, number];
+    const b = projection.toGlobalPixels(to, zoom) as [number, number];
+    return Math.hypot(a[0] - b[0], a[1] - b[1]);
+  } catch {
+    return Number.POSITIVE_INFINITY;
+  }
+}
+
+/** Как у panTo: ближе двух экранов — обычный переезд без отъезда. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function isNearbyFlight(map: any, from: [number, number], to: [number, number], zoom: number): boolean {
+  const size = map.container?.getSize?.() as [number, number] | undefined;
+  if (!size) return false;
+  return pixelDistance(map, from, to, zoom) < 2 * Math.max(size[0], size[1]);
+}
+
+/** Обзор, в который помещаются обе точки — отсюда камера потом приближает. */
+function overviewForFlight(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ymaps: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  map: any,
+  from: [number, number],
+  to: [number, number],
+  fromZoom: number,
+  targetZoom: number,
+): { center: [number, number]; zoom: number } {
+  const size = map.container.getSize() as [number, number];
+  try {
+    const bounds = ymaps.util.bounds.fromPoints([from, to]);
+    const projection = map.options.get('projection') ?? ymaps.projection?.wgs84Mercator;
+    // 3-й аргумент — проекция, не options. Иначе getCenterAndZoom падает.
+    const fitted = ymaps.util.bounds.getCenterAndZoom(bounds, size, projection, {
+      zoomMargin: 64,
+    }) as { center: [number, number]; zoom: number };
+    const zoom = Math.max(
+      2,
+      Math.min(Math.floor(fitted.zoom), Math.min(Math.round(fromZoom), targetZoom) - 2),
+    );
+    return { center: fitted.center, zoom };
+  } catch {
+    return {
+      center: [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2],
+      zoom: 2,
+    };
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function attachTileDiagnostics(map: any, container: HTMLElement | null): () => void {
+  const onMapTileload = () => {
+    bump('mapTileload');
+    const flight = tileWindow().__mapTileFlight;
+    if (flight) flight.mapTileload += 1;
+    logTile('map.tileload', { zoom: map.getZoom?.() });
+  };
+  const onMapTileerror = () => {
+    bump('mapTileerror');
+    const flight = tileWindow().__mapTileFlight;
+    if (flight) flight.mapTileerror += 1;
+    logTile('map.tileerror', { zoom: map.getZoom?.() });
+  };
+  const onSizeChange = (event: { get: (key: string) => unknown }) => {
+    bump('sizechange');
+    const flight = tileWindow().__mapTileFlight;
+    if (flight) flight.sizeChanges += 1;
+    logTile('map.sizechange', {
+      oldSize: event.get('oldSize'),
+      newSize: event.get('newSize'),
+      flying: Boolean(flight),
+    });
+  };
+
+  try {
+    map.events.add('tileload', onMapTileload);
+    map.events.add('tileerror', onMapTileerror);
+  } catch {
+    logTile('map.tile-events-missing', { note: 'Map не бросает tileload/tileerror' });
+  }
+  map.events.add('sizechange', onSizeChange);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const boundLayers = new Set<any>();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const bindLayer = (layer: any) => {
+    if (!layer || boundLayers.has(layer)) return;
+    boundLayers.add(layer);
+    try {
+      layer.events?.add('tileload', () => {
+        bump('layerTileload');
+        const flight = tileWindow().__mapTileFlight;
+        if (flight) flight.layerTileload += 1;
+        logTile('layer.tileload', { zoom: map.getZoom?.() });
+      });
+      layer.events?.add('tileerror', () => {
+        bump('layerTileerror');
+        const flight = tileWindow().__mapTileFlight;
+        if (flight) flight.layerTileerror += 1;
+        logTile('layer.tileerror', { zoom: map.getZoom?.() });
+      });
+      layer.events?.add('tileloadchange', (event: { get: (key: string) => unknown }) => {
+        const ready = Number(event.get('readyTileNumber') ?? 0);
+        const total = Number(event.get('totalTileNumber') ?? 0);
+        bump('layerTileloadchange');
+        const flight = tileWindow().__mapTileFlight;
+        if (flight) {
+          flight.tileloadchange += 1;
+          flight.readyMin = Math.min(flight.readyMin, ready);
+          flight.readyMax = Math.max(flight.readyMax, ready);
+          flight.totalMax = Math.max(flight.totalMax, total);
+          if (total > 0 && ready < total) flight.incompleteTicks += 1;
+        }
+        if (ready === 0 || ready === total || (flight && flight.tileloadchange % 8 === 0)) {
+          logTile('layer.tileloadchange', { ready, total, zoom: map.getZoom?.() });
+        }
+      });
+    } catch {
+      /* слой без событий */
+    }
+  };
+
+  try {
+    map.layers?.each?.(bindLayer);
+    const first = findTileLayer(map.layers);
+    if (first) bindLayer(first);
+    map.layers?.events?.add?.('add', (event: { get: (key: string) => unknown }) => {
+      bindLayer(event.get('layer') ?? event.get('child') ?? event.get('object'));
+    });
+  } catch {
+    /* manager без each */
+  }
+
+  const ro =
+    container && typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver((entries) => {
+          const box = entries[0]?.contentRect;
+          logTile('dom.resize', {
+            width: Math.round(box?.width ?? 0),
+            height: Math.round(box?.height ?? 0),
+            flying: Boolean(tileWindow().__mapTileFlight),
+          });
+        })
+      : null;
+  if (ro && container) ro.observe(container);
+
+  logTile('diag.attached', {
+    mapEvents: ['tileload', 'tileerror', 'sizechange'],
+    layerEvents: ['tileload', 'tileerror', 'tileloadchange'],
+    note: 'официальный API 2.1: tileloadchange на Layer, не на Map',
+  });
+
+  return () => {
+    try {
+      map.events.remove('tileload', onMapTileload);
+      map.events.remove('tileerror', onMapTileerror);
+      map.events.remove('sizechange', onSizeChange);
+    } catch {
+      /* destroy */
+    }
+    ro?.disconnect();
+  };
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function findTileLayer(root: any): any {
@@ -172,7 +484,7 @@ function waitForVisibleTiles(map: any, timeoutMs: number): Promise<void> {
 
 function pinLayoutClass(ymaps: { templateLayoutFactory: { createClass: (html: string) => unknown } }) {
   return ymaps.templateLayoutFactory.createClass(`
-    <div class="map-pin map-pin--heart $[properties.activeClass]">
+    <div class="map-pin map-pin--heart $[properties.activeClass]" style="$[properties.fanStyle]">
       <div class="map-pin__inner">
         <div class="map-pin__heart-wrap">
           <svg class="map-pin__heart-svg" viewBox="0 0 40 42" xmlns="http://www.w3.org/2000/svg">
@@ -220,6 +532,7 @@ export function MapCanvas({
     let cancelled = false;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let map: any = null;
+    let detachDiag: (() => void) | null = null;
 
     loadYmaps()
       .then((ymaps) => {
@@ -234,7 +547,7 @@ export function MapCanvas({
             zoom: initialZoom,
             controls: [],
           },
-          { suppressMapOpenBlock: true },
+          { suppressMapOpenBlock: true, maxAnimationZoomDifference: 16 },
         );
 
         map.behaviors.disable('dblClickZoom');
@@ -281,6 +594,7 @@ export function MapCanvas({
         );
 
         mapRef.current = map;
+        detachDiag = attachTileDiagnostics(map, containerRef.current);
         // Родительский Screen входит через transform/scale. После окончания
         // перехода Яндексу нужно повторно измерить настоящий viewport.
         window.requestAnimationFrame(() => map?.container.fitToViewport());
@@ -299,6 +613,7 @@ export function MapCanvas({
     return () => {
       cancelled = true;
       window.removeEventListener('resize', handleResize);
+      detachDiag?.();
       readyWaitersRef.current.forEach((resolve) => resolve());
       readyWaitersRef.current.clear();
       placemarksRef.current.clear();
@@ -319,7 +634,6 @@ export function MapCanvas({
     const existing = placemarksRef.current;
     const wanted = new Map(pins.map((pin) => [pin.id, pin]));
     const layout = pinLayoutRef.current;
-
     const drawn = pinStateRef.current;
 
     for (const [id, placemark] of [...existing]) {
@@ -330,43 +644,67 @@ export function MapCanvas({
       }
     }
 
-    pins.forEach((pin) => {
-      let placemark = existing.get(pin.id);
-      const props = {
-        label: pin.label,
-        activeClass: pin.active ? 'map-pin--active' : '',
-      };
-      const signature = `${pin.label}|${props.activeClass}|${pin.lat}|${pin.lng}`;
+    const applyPins = () => {
+      const fans = computePinFans(map, pins);
+      pins.forEach((pin) => {
+        let placemark = existing.get(pin.id);
+        const fan = fans.get(pin.id) ?? { angle: 0, z: 1000 };
+        const props = {
+          label: pin.label,
+          activeClass: pin.active ? 'map-pin--active' : '',
+          fanStyle: `--fan-angle:${fan.angle}deg;`,
+        };
+        const signature = `${pin.label}|${props.activeClass}|${pin.lat}|${pin.lng}|${fan.angle}`;
 
-      if (!placemark) {
-        placemark = new ymaps.Placemark([pin.lat, pin.lng], props, {
-          iconLayout: 'default#imageWithContent',
-          iconImageHref:
-            'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
-          // Нижний центр пина = точка на карте (без двойного смещения в CSS)
-          iconImageSize: [PIN_W, PIN_H],
-          iconImageOffset: [-PIN_W / 2, -PIN_H],
-          iconContentOffset: [0, 0],
-          iconContentLayout: layout,
-          hasBalloon: false,
-          hasHint: false,
-          zIndex: 1000,
-          // Не пересчитывать позицию при зуме как DOM-элемент
-          interactivityModel: 'default#opaque',
-        });
-        placemark.events.add('click', (event: { stopPropagation: () => void }) => {
-          event.stopPropagation();
-          pinClickRef.current?.(pin.id);
-        });
-        map.geoObjects.add(placemark);
-        existing.set(pin.id, placemark);
-      } else if (drawn.get(pin.id) !== signature) {
-        placemark.geometry.setCoordinates([pin.lat, pin.lng]);
-        placemark.properties.set(props);
-      }
+        if (!placemark) {
+          placemark = new ymaps.Placemark([pin.lat, pin.lng], props, {
+            iconLayout: 'default#imageWithContent',
+            iconImageHref:
+              'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+            iconImageSize: [PIN_W, PIN_H],
+            iconImageOffset: [-PIN_W / 2, -PIN_H],
+            iconContentOffset: [0, 0],
+            iconContentLayout: layout,
+            hasBalloon: false,
+            hasHint: false,
+            zIndex: fan.z,
+            interactivityModel: 'default#opaque',
+          });
+          placemark.events.add('click', (event: { stopPropagation: () => void }) => {
+            event.stopPropagation();
+            pinClickRef.current?.(pin.id);
+          });
+          map.geoObjects.add(placemark);
+          existing.set(pin.id, placemark);
+        } else if (drawn.get(pin.id) !== signature) {
+          placemark.geometry.setCoordinates([pin.lat, pin.lng]);
+          placemark.properties.set(props);
+          placemark.options.set({
+            iconImageOffset: [-PIN_W / 2, -PIN_H],
+            zIndex: fan.z,
+          });
+        }
 
-      drawn.set(pin.id, signature);
-    });
+        drawn.set(pin.id, signature);
+      });
+    };
+
+    applyPins();
+
+    let lastZoomKey = Math.round(Number(map.getZoom?.() ?? 0) * 4);
+    const onBounds = () => {
+      const zoomKey = Math.round(Number(map.getZoom?.() ?? 0) * 4);
+      if (zoomKey === lastZoomKey) return;
+      lastZoomKey = zoomKey;
+      applyPins();
+    };
+    map.events.add('boundschange', onBounds);
+    map.events.add('actionend', applyPins);
+
+    return () => {
+      map.events.remove('boundschange', onBounds);
+      map.events.remove('actionend', applyPins);
+    };
   }, [pins, ready]);
 
   useImperativeHandle(
@@ -441,6 +779,16 @@ export function MapCanvas({
             }
           }
 
+          logTile('PRELOAD_URLS', {
+            count: urls.size,
+            sample: [...urls].slice(0, 2),
+            from: [fromLat, fromLng],
+            to: [lat, lng],
+            fromZoom,
+            zoom,
+            size: [width, height],
+          });
+
           const cache = preloadedTilesRef.current;
           const jobs: Promise<void>[] = [];
           for (const url of urls) {
@@ -463,11 +811,111 @@ export function MapCanvas({
           /* предзагрузка не должна ломать сценарий */
         }
       },
-      flyTo(lat: number, lng: number, zoom = 15, duration = 1600) {
-        mapRef.current?.setCenter([lat, lng], zoom, {
-          duration,
-          timingFunction: 'ease-in-out',
+      async flyTo(lat: number, lng: number, zoom = 15, duration = 1600) {
+        const map = mapRef.current;
+        const ymaps = ymapsRef.current;
+        if (!map) return;
+
+        const from = (map.getCenter?.() as [number, number] | undefined) ?? [lat, lng];
+        const fromZoom = Number(map.getZoom?.() ?? zoom);
+        const targetZoom = Math.round(zoom);
+        const dest: [number, number] = [lat, lng];
+        const size = map.container?.getSize?.();
+        const nearby = isNearbyFlight(map, from, dest, fromZoom);
+        const sameSpot = pixelDistance(map, from, dest, fromZoom) < 12;
+        const animDuration = Math.max(800, Number(duration) || 1200);
+        const startedAt = performance.now();
+        const w = tileWindow();
+        const flight: TileFlight = {
+          id: (w.__mapTileFlight?.id ?? 0) + 1,
+          mapTileload: 0,
+          mapTileerror: 0,
+          layerTileload: 0,
+          layerTileerror: 0,
+          tileloadchange: 0,
+          readyMin: Number.POSITIVE_INFINITY,
+          readyMax: 0,
+          totalMax: 0,
+          incompleteTicks: 0,
+          sizeChanges: 0,
+        };
+        w.__mapTileFlight = flight;
+        logTile('FLY_START', {
+          lat,
+          lng,
+          zoom: targetZoom,
+          from,
+          fromZoom,
+          nearby,
+          sameSpot,
+          duration: animDuration,
+          size,
         });
+
+        try {
+          if (sameSpot && Math.abs(fromZoom - targetZoom) <= 0.2) {
+            await waitForVisibleTiles(map, FIRST_TILES_TIMEOUT_MS);
+            return;
+          }
+
+          if (nearby) {
+            await waitForAnimation(
+              map.panTo(dest, {
+                duration: animDuration,
+                timingFunction: 'ease-in-out',
+                flying: false,
+                safe: false,
+              }),
+              animDuration,
+            );
+            await waitForVisibleTiles(map, FIRST_TILES_TIMEOUT_MS);
+            return;
+          }
+
+          // Далеко: отъезд на обзор → ждём тайлы → подлёт к точке.
+          // Штатный panTo.flying на очень длинных дистанциях срывается.
+          const overview = ymaps
+            ? overviewForFlight(ymaps, map, from, dest, fromZoom, targetZoom)
+            : { center: dest, zoom: Math.max(3, targetZoom - 6) };
+          const outMs = Math.max(900, Math.round(animDuration * 0.6));
+          const inMs = Math.max(1000, Math.round(animDuration * 0.75));
+
+          logTile('FLY_OUT', { overview, outMs });
+          await waitForAnimation(
+            map.setCenter(overview.center, overview.zoom, {
+              duration: outMs,
+              timingFunction: 'ease-in-out',
+            }),
+            outMs,
+          );
+          await waitForVisibleTiles(map, 8000);
+          logTile('FLY_OUT_READY', { zoom: map.getZoom?.(), center: map.getCenter?.() });
+
+          logTile('FLY_IN', { dest, zoom: targetZoom, inMs });
+          await waitForAnimation(
+            map.setCenter(dest, targetZoom, {
+              duration: inMs,
+              timingFunction: 'ease-in-out',
+            }),
+            inMs,
+          );
+          await waitForVisibleTiles(map, FIRST_TILES_TIMEOUT_MS);
+        } finally {
+          logTile('FLY_END', {
+            elapsedMs: Math.round(performance.now() - startedAt),
+            duration: animDuration,
+            nearby,
+            zoom: map.getZoom?.(),
+            center: map.getCenter?.(),
+            size: map.container?.getSize?.(),
+            tileloadchange: flight.tileloadchange,
+            readyMin: Number.isFinite(flight.readyMin) ? flight.readyMin : null,
+            readyMax: flight.readyMax,
+            totalMax: flight.totalMax,
+            incompleteTicks: flight.incompleteTicks,
+          });
+          w.__mapTileFlight = null;
+        }
       },
       fitAll(points, duration = 1400) {
         const map = mapRef.current;

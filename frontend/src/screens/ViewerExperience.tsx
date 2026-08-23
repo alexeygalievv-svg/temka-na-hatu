@@ -53,7 +53,7 @@ export function ViewerExperience({
     await mapRef.current?.waitUntilReady();
     if (cancelledRef.current) return;
     if (points[0]) {
-      await mapRef.current?.preloadRoute(points[0].lat, points[0].lng, 15.3);
+      await mapRef.current?.preloadRoute(points[0].lat, points[0].lng, 15);
     }
     if (cancelledRef.current) return;
     setStage('reveal');
@@ -62,8 +62,7 @@ export function ViewerExperience({
     for (let i = 0; i < points.length; i++) {
       if (cancelledRef.current) return;
       setCurrentIndex(i);
-      mapRef.current?.flyTo(points[i].lat, points[i].lng, 15.3, 1700);
-      await sleep(1850);
+      await mapRef.current?.flyTo(points[i].lat, points[i].lng, 15, 1700);
       if (cancelledRef.current) return;
       setVisibleCount(i + 1);
       haptic('light');
@@ -71,7 +70,7 @@ export function ViewerExperience({
       await Promise.all([
         sleep(1250),
         next
-          ? mapRef.current?.preloadRoute(next.lat, next.lng, 15.3) ?? Promise.resolve()
+          ? mapRef.current?.preloadRoute(next.lat, next.lng, 15) ?? Promise.resolve()
           : Promise.resolve(),
       ]);
     }
@@ -112,7 +111,7 @@ export function ViewerExperience({
       <MapCanvas
         ref={mapRef}
         initialCenter={points[0] ?? { lat: 55.7512, lng: 37.6184 }}
-        initialZoom={10}
+        initialZoom={15}
         pins={pins}
         onPinClick={(id) => {
           if (stage !== 'explore') return;

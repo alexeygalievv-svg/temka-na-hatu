@@ -1,6 +1,7 @@
 import type { IntroSettings } from '../lib/intro';
 import { Sheet } from '../components/Sheet';
 import { IntroOverlay } from '../components/IntroOverlay';
+import { blurOnEnter } from '../lib/keyboard';
 
 interface IntroEditorSheetProps {
   open: boolean;
@@ -43,6 +44,8 @@ export function IntroEditorSheet({
           <input
             value={intro.eyebrow}
             onChange={(e) => onIntroChange({ eyebrow: e.target.value })}
+            onKeyDown={blurOnEnter}
+            enterKeyHint="done"
             placeholder="Для тебя собрал"
             maxLength={60}
           />
@@ -53,6 +56,8 @@ export function IntroEditorSheet({
           <input
             value={authorName}
             onChange={(e) => onAuthorNameChange(e.target.value)}
+            onKeyDown={blurOnEnter}
+            enterKeyHint="done"
             placeholder="Ваше имя"
             maxLength={60}
           />
@@ -63,6 +68,7 @@ export function IntroEditorSheet({
           <textarea
             value={intro.message}
             onChange={(e) => onIntroChange({ message: e.target.value })}
+            enterKeyHint="done"
             placeholder="Здесь остались наши самые тёплые моменты"
             rows={2}
             maxLength={200}
@@ -74,6 +80,8 @@ export function IntroEditorSheet({
           <input
             value={intro.buttonText}
             onChange={(e) => onIntroChange({ buttonText: e.target.value })}
+            onKeyDown={blurOnEnter}
+            enterKeyHint="done"
             placeholder="Открыть карту"
             maxLength={40}
           />
