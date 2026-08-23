@@ -815,124 +815,78 @@ body::after {
   will-change: transform, filter;
 }
 
-.viewer__speed-lines {
+.viewer__speed-overlay {
   position: absolute;
-  inset: -18%;
-  z-index: 9;
+  inset: 0;
+  z-index: 18;
   pointer-events: none;
-  opacity: 0;
   overflow: hidden;
-  transform: rotate(var(--streak-angle));
 }
 
-.viewer--speed-transition .viewer__speed-lines {
-  animation: speed-lines-layer 760ms cubic-bezier(0.18, 0.82, 0.26, 1) both;
+.viewer__speed-wash {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(120% 80% at 50% 50%, rgba(51, 38, 28, 0.08), rgba(51, 38, 28, 0.28)),
+    linear-gradient(90deg, rgba(255, 247, 236, 0.08), transparent 18%, transparent 82%, rgba(255, 247, 236, 0.1));
+}
+
+.viewer__speed-field {
+  position: absolute;
+  inset: -28%;
+  overflow: hidden;
 }
 
 .viewer__speed-line {
   position: absolute;
-  left: -55vw;
-  top: var(--streak-y);
-  width: var(--streak-len);
-  height: var(--streak-h);
+  left: -20vw;
   border-radius: 999px;
-  opacity: 0;
-  transform: translate3d(var(--streak-x), 0, 0);
+  transform-origin: center;
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(255, 247, 236, 0.18) 10%,
-    rgba(255, 247, 236, var(--streak-opacity)) 48%,
-    rgba(255, 247, 236, 0.16) 78%,
+    rgba(255, 247, 236, 0.35) 12%,
+    rgba(255, 250, 241, 0.95) 48%,
+    rgba(255, 247, 236, 0.4) 82%,
     transparent 100%
   );
   box-shadow:
-    0 0 10px rgba(255, 247, 236, 0.34),
-    0 0 24px rgba(194, 89, 50, 0.18);
-  filter: blur(0.8px);
-}
-
-.viewer--speed-transition .viewer__speed-line {
-  animation: speed-line-flight 620ms cubic-bezier(0.12, 0.78, 0.22, 1) both;
-  animation-delay: var(--streak-delay);
+    0 0 8px rgba(255, 247, 236, 0.55),
+    0 0 18px rgba(255, 236, 210, 0.28);
+  filter: blur(1.4px);
+  will-change: transform, opacity;
 }
 
 @keyframes camera-speed-map {
   0% {
-    transform: translate3d(0, 0, 0) scale(1);
+    transform: scale(1);
     filter: sepia(0.16) saturate(0.8) blur(0);
   }
-  18% {
-    transform: translate3d(0, 0, 0) scale(1.035);
-    filter: sepia(0.16) saturate(0.88) blur(3px);
+  20% {
+    transform: scale(1.04);
+    filter: sepia(0.16) saturate(0.84) blur(1.5px);
   }
-  40% {
-    transform: translate3d(0, 0, 0) scale(1.085);
-    filter: sepia(0.12) saturate(0.94) blur(12px);
-  }
-  58% {
-    transform: translate3d(0, 0, 0) scale(1.095);
-    filter: sepia(0.12) saturate(0.95) blur(14px);
+  48% {
+    transform: scale(1.07);
+    filter: sepia(0.14) saturate(0.88) blur(2.4px);
   }
   78% {
-    transform: translate3d(0, 0, 0) scale(1.035);
-    filter: sepia(0.15) saturate(0.86) blur(5px);
+    transform: scale(1.03);
+    filter: sepia(0.16) saturate(0.82) blur(1px);
   }
   100% {
-    transform: translate3d(0, 0, 0) scale(1);
+    transform: scale(1);
     filter: sepia(0.16) saturate(0.8) blur(0);
-  }
-}
-
-@keyframes speed-lines-layer {
-  0% {
-    opacity: 0;
-  }
-  18% {
-    opacity: 0.45;
-  }
-  42% {
-    opacity: 0.95;
-  }
-  64% {
-    opacity: 0.78;
-  }
-  100% {
-    opacity: 0;
-  }
-}
-
-@keyframes speed-line-flight {
-  0% {
-    opacity: 0;
-    transform: translate3d(calc(var(--streak-x) - 28vw), 0, 0) scaleX(0.65);
-  }
-  18% {
-    opacity: 0.32;
-  }
-  45% {
-    opacity: var(--streak-opacity);
-    transform: translate3d(calc(var(--streak-x) + 58vw), 0, 0) scaleX(1.1);
-  }
-  76% {
-    opacity: 0.24;
-  }
-  100% {
-    opacity: 0;
-    transform: translate3d(calc(var(--streak-x) + 150vw), 0, 0) scaleX(1.35);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .viewer--speed-transition .map-canvas__map {
     animation: none;
-    filter: sepia(0.16) saturate(0.8) blur(4px);
   }
 
-  .viewer--speed-transition .viewer__speed-lines,
-  .viewer--speed-transition .viewer__speed-line {
-    animation: none;
-    opacity: 0;
+  .viewer__speed-overlay {
+    display: none;
   }
 }
 

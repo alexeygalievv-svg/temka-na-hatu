@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { IntroSettings, MemoryPoint } from '../types';
 import { haptic } from '../telegram';
@@ -21,30 +21,81 @@ interface ViewerExperienceProps {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const SPEED_STREAKS = [
-  { y: 7, x: -18, len: 28, h: 1.4, opacity: 0.36, delay: 0 },
-  { y: 12, x: 36, len: 42, h: 2.2, opacity: 0.48, delay: 34 },
-  { y: 18, x: -42, len: 68, h: 2.8, opacity: 0.55, delay: 66 },
-  { y: 23, x: 18, len: 24, h: 1.3, opacity: 0.3, delay: 112 },
-  { y: 29, x: -10, len: 54, h: 2.4, opacity: 0.5, delay: 26 },
-  { y: 34, x: 48, len: 76, h: 3.2, opacity: 0.58, delay: 78 },
-  { y: 40, x: -34, len: 36, h: 1.7, opacity: 0.38, delay: 126 },
-  { y: 46, x: 10, len: 88, h: 3.4, opacity: 0.62, delay: 44 },
-  { y: 51, x: -50, len: 58, h: 2.5, opacity: 0.46, delay: 92 },
-  { y: 57, x: 28, len: 32, h: 1.5, opacity: 0.34, delay: 150 },
-  { y: 63, x: -24, len: 96, h: 3.6, opacity: 0.64, delay: 18 },
-  { y: 68, x: 44, len: 48, h: 2.1, opacity: 0.44, delay: 104 },
-  { y: 74, x: -12, len: 72, h: 2.8, opacity: 0.52, delay: 58 },
-  { y: 80, x: 22, len: 26, h: 1.4, opacity: 0.32, delay: 136 },
-  { y: 86, x: -40, len: 62, h: 2.6, opacity: 0.48, delay: 8 },
-] as const;
+interface SpeedStreak {
+  id: string;
+  y: number;
+  length: number;
+  height: number;
+  opacity: number;
+  delay: number;
+  startX: number;
+}
+
+function buildStreaks(seed: number): SpeedStreak[] {
+  return Array.from({ length: 46 }, (_, i) => {
+    const n = (i * 37 + seed * 19) % 97;
+    return {
+      id: `${seed}-${i}`,
+      y: 2 + (i / 45) * 96 + ((n % 9) - 4),
+      length: 42 + (n % 78),
+      height: 2 + (n % 8),
+      opacity: 0.42 + (n % 48) / 100,
+      delay: (n % 90) / 1000,
+      startX: -38 + (n % 26),
+    };
+  });
+}
 
 function movementAngle(from: MemoryPoint | null, to: MemoryPoint): number {
-  if (!from) return -10;
+  if (!from) return -8;
   const dx = to.lng - from.lng;
   const dy = -(to.lat - from.lat);
-  if (Math.abs(dx) + Math.abs(dy) < 0.000001) return -10;
+  if (Math.abs(dx) + Math.abs(dy) < 0.000001) return -8;
   return (Math.atan2(dy, dx) * 180) / Math.PI;
+}
+
+function SpeedStreakOverlay({ angle, streaks }: { angle: number; streaks: SpeedStreak[] }) {
+  return (
+    <motion.div
+      className="viewer__speed-overlay"
+      aria-hidden="true"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.12, ease: 'linear' }}
+    >
+      <div className="viewer__speed-wash" />
+      <div className="viewer__speed-field" style={{ transform: `rotate(${angle}deg)` }}>
+        {streaks.map((streak) => (
+          <motion.span
+            key={streak.id}
+            className="viewer__speed-line"
+            style={{
+              top: `${streak.y}%`,
+              width: `${streak.length}vw`,
+              height: streak.height,
+            }}
+            initial={{
+              x: `${streak.startX}vw`,
+              opacity: 0,
+              scaleX: 0.35,
+            }}
+            animate={{
+              x: [`${streak.startX}vw`, `${streak.startX + 72}vw`, `${streak.startX + 168}vw`],
+              opacity: [0, streak.opacity, streak.opacity, 0],
+              scaleX: [0.45, 1.35, 1.7],
+            }}
+            transition={{
+              duration: 0.58,
+              delay: streak.delay,
+              times: [0, 0.22, 0.62, 1],
+              ease: [0.12, 0.82, 0.18, 1],
+            }}
+          />
+        ))}
+      </div>
+    </motion.div>
+  );
 }
 
 /**
@@ -66,7 +117,9 @@ export function ViewerExperience({
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [speedTransition, setSpeedTransition] = useState(false);
-  const [speedAngle, setSpeedAngle] = useState(-10);
+  const [speedAngle, setSpeedAngle] = useState(-8);
+  const [speedKey, setSpeedKey] = useState(0);
+  const streaks = useMemo(() => buildStreaks(speedKey), [speedKey]);
 
   useEffect(() => {
     cancelledRef.current = false;
@@ -87,19 +140,18 @@ export function ViewerExperience({
       if (cancelledRef.current) return;
       setCurrentIndex(i);
 
-      // Speed lines: карта остаётся видимой, но в пик скорости покрывается
-      // направленными motion streaks; центр меняется внутри этого пика.
       setSpeedAngle(movementAngle(i > 0 ? points[i - 1] : null, points[i]));
+      setSpeedKey((key) => key + 1);
       setSpeedTransition(true);
-      await sleep(150);
+      await sleep(120);
       if (cancelledRef.current) return;
 
-      await mapRef.current?.jumpTo(points[i].lat, points[i].lng, 15.3, 320);
+      await mapRef.current?.jumpTo(points[i].lat, points[i].lng, 15.3, 280);
       if (cancelledRef.current) return;
 
-      await sleep(260);
+      await sleep(360);
       setSpeedTransition(false);
-      await sleep(300);
+      await sleep(180);
       if (cancelledRef.current) return;
 
       setVisibleCount(i + 1);
@@ -148,28 +200,11 @@ export function ViewerExperience({
         }}
       />
 
-      <div
-        className="viewer__speed-lines"
-        aria-hidden="true"
-        style={{ '--streak-angle': `${speedAngle}deg` } as CSSProperties}
-      >
-        {SPEED_STREAKS.map((streak, index) => (
-          <span
-            key={index}
-            className="viewer__speed-line"
-            style={
-              {
-                '--streak-y': `${streak.y}%`,
-                '--streak-x': `${streak.x}vw`,
-                '--streak-len': `${streak.len}vw`,
-                '--streak-h': `${streak.h}px`,
-                '--streak-opacity': streak.opacity,
-                '--streak-delay': `${streak.delay}ms`,
-              } as CSSProperties
-            }
-          />
-        ))}
-      </div>
+      <AnimatePresence>
+        {speedTransition && (
+          <SpeedStreakOverlay key={speedKey} angle={speedAngle} streaks={streaks} />
+        )}
+      </AnimatePresence>
 
       {/* Интро-занавес */}
       <AnimatePresence>
@@ -194,7 +229,7 @@ export function ViewerExperience({
 
       {/* Подпись текущей точки во время «путешествия» */}
       <AnimatePresence mode="wait">
-        {stage === 'reveal' && currentIndex >= 0 && (
+        {stage === 'reveal' && currentIndex >= 0 && !speedTransition && (
           <motion.div
             key={currentIndex}
             className="viewer__caption"
