@@ -10,6 +10,7 @@ export interface MapPin {
 }
 
 export interface MapHandle {
+  waitUntilReady: () => Promise<void>;
   flyTo: (lat: number, lng: number, zoom?: number, duration?: number) => Promise<void>;
   fitAll: (points: Array<{ lat: number; lng: number }>, duration?: number) => Promise<void>;
   /** Прогревает HTTP-кеш тайлами вокруг точки — без второй карты и без движения камеры. */
@@ -42,7 +43,7 @@ const debugCamera = (label: string, payload: Record<string, unknown>) => {
 const TILE_SIZE = 256;
 /** Не даём предзагрузке зависнуть: дальше её прикрывает fade-overlay. */
 const PRELOAD_TIMEOUT_MS = 1200;
-const PRELOAD_MAX_TILES = 48;
+const PRELOAD_MAX_TILES = 72;
 
 /**
  * Ищет в коллекции слоёв карты живой тайловый слой (у него есть getTileUrl).
@@ -55,7 +56,10 @@ function findTileLayer(root: any): any {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const visit = (node: any) => {
     if (found || !node) return;
-    if (typeof node.getTileUrl === 'function') {
+    if (
+      typeof node.getTileUrl === 'function' &&
+      typeof node.getTileStatus === 'function'
+    ) {
       found = node;
       return;
     }
@@ -63,6 +67,73 @@ function findTileLayer(root: any): any {
   };
   visit(root);
   return found;
+}
+
+interface TileStatus {
+  readyTileNumber?: number;
+  totalTileNumber?: number;
+}
+
+/**
+ * Ждём не просто HTTP-ответы, а фактическую отрисовку всех видимых тайлов.
+ * Это публичный API Yandex Maps 2.1: Layer#getTileStatus + tileloadchange.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function waitForVisibleTiles(map: any, timeoutMs = 7000): Promise<void> {
+  return new Promise<void>((resolve) => {
+    let finished = false;
+    let stableChecks = 0;
+    let pollTimer: number | null = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let observedLayer: any = null;
+
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      if (pollTimer !== null) window.clearInterval(pollTimer);
+      observedLayer?.events?.remove?.('tileloadchange', check);
+      resolve();
+    };
+
+    const check = () => {
+      const layer = findTileLayer(map?.layers);
+      if (!layer || typeof layer.getTileStatus !== 'function') {
+        stableChecks = 0;
+        return;
+      }
+      if (layer !== observedLayer) {
+        observedLayer?.events?.remove?.('tileloadchange', check);
+        observedLayer = layer;
+        observedLayer.events?.add?.('tileloadchange', check);
+      }
+
+      let status: TileStatus | null = null;
+      try {
+        status = layer.getTileStatus() as TileStatus;
+      } catch {
+        // Слой может кратковременно перестраиваться после смены zoom.
+        // Не считаем это готовностью — следующий poll попробует снова.
+        return;
+      }
+
+      const ready = Number(status?.readyTileNumber ?? 0);
+      const total = Number(status?.totalTileNumber ?? 0);
+      debugCamera('tiles', { ready, total });
+
+      // Два последовательных подтверждения защищают от промежуточного
+      // состояния 0/0 сразу после завершения движения камеры.
+      if (total > 0 && ready >= total) {
+        stableChecks += 1;
+        if (stableChecks >= 2) finish();
+      } else {
+        stableChecks = 0;
+      }
+    };
+
+    pollTimer = window.setInterval(check, 120);
+    window.setTimeout(finish, timeoutMs);
+    window.setTimeout(check, 50);
+  });
 }
 
 /** Ждём не меньше duration: промис Яндекса часто резолвится сразу и обрывал анимацию. */
@@ -118,6 +189,7 @@ export function MapCanvas({
   const pinStateRef = useRef<Map<string, string>>(new Map());
   /** URL тайлов, которые уже запрашивали, — не гоняем сеть повторно. */
   const preloadedTilesRef = useRef<Set<string>>(new Set());
+  const readyWaitersRef = useRef<Set<() => void>>(new Set());
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -191,14 +263,26 @@ export function MapCanvas({
         );
 
         mapRef.current = map;
+        // Родительский Screen входит через transform/scale. После окончания
+        // перехода Яндексу нужно повторно измерить настоящий viewport.
+        window.requestAnimationFrame(() => map?.container.fitToViewport());
+        window.setTimeout(() => map?.container.fitToViewport(), 550);
+        readyWaitersRef.current.forEach((resolve) => resolve());
+        readyWaitersRef.current.clear();
         setReady(true);
       })
       .catch((err: Error) => {
         if (!cancelled) setError(err.message);
       });
 
+    const handleResize = () => mapRef.current?.container.fitToViewport();
+    window.addEventListener('resize', handleResize);
+
     return () => {
       cancelled = true;
+      window.removeEventListener('resize', handleResize);
+      readyWaitersRef.current.forEach((resolve) => resolve());
+      readyWaitersRef.current.clear();
       placemarksRef.current.clear();
       pinStateRef.current.clear();
       if (map) map.destroy();
@@ -270,6 +354,10 @@ export function MapCanvas({
   useImperativeHandle(
     ref,
     () => ({
+      async waitUntilReady() {
+        if (mapRef.current) return;
+        await new Promise<void>((resolve) => readyWaitersRef.current.add(resolve));
+      },
       async flyTo(lat: number, lng: number, zoom = 15, duration = 1200) {
         const map = mapRef.current;
         if (!map) return;
@@ -297,6 +385,7 @@ export function MapCanvas({
             });
 
         await waitForAnimation(animation, safeDuration + 60);
+        await waitForVisibleTiles(map);
         debugCamera('end', { method, elapsed: Math.round(performance.now() - started) });
       },
       async fitAll(points, duration = 1400) {
@@ -318,12 +407,14 @@ export function MapCanvas({
             : map.setBounds(ymaps.util.bounds.fromPoints(points.map((p) => [p.lat, p.lng])), {
                 duration: safeDuration,
                 timingFunction: CAMERA_EASE,
-                // checkZoomRange делает сетевой запрос перед движением — это заметная задержка.
-                checkZoomRange: false,
+                // Задержка скрыта под fade, зато Яндекс не выберет зум,
+                // для которого в данном регионе отсутствуют тайлы.
+                checkZoomRange: true,
                 zoomMargin: 48,
               });
 
         await waitForAnimation(animation, safeDuration + 60);
+        await waitForVisibleTiles(map);
         debugCamera('fitAll end', { elapsed: Math.round(performance.now() - started) });
       },
       async preloadArea(lat: number, lng: number, zoom = 15) {
@@ -335,37 +426,51 @@ export function MapCanvas({
           const layer = findTileLayer(map.layers);
           if (!projection || !layer) return;
 
-          const [px, py] = projection.toGlobalPixels([lat, lng], z) as [number, number];
+          const [startLat, startLng] = map.getCenter() as [number, number];
           const [w, h] = map.container.getSize() as [number, number];
-
-          // Вьюпорт будущего кадра + один ряд тайлов запаса по краям.
-          const x1 = Math.floor((px - w / 2) / TILE_SIZE) - 1;
-          const x2 = Math.floor((px + w / 2) / TILE_SIZE) + 1;
-          const y1 = Math.floor((py - h / 2) / TILE_SIZE) - 1;
-          const y2 = Math.floor((py + h / 2) / TILE_SIZE) + 1;
 
           const cache = preloadedTilesRef.current;
           const jobs: Promise<void>[] = [];
 
-          outer: for (let x = x1; x <= x2; x++) {
-            for (let y = y1; y <= y2; y++) {
-              let url: string | null = null;
-              try {
-                url = layer.getTileUrl([x, y], z);
-              } catch {
-                continue;
+          // Греем не только точку назначения, но и пять кадров вдоль пути:
+          // именно промежуточные тайлы раньше становились серыми при panTo.
+          outer: for (let step = 0; step <= 4; step++) {
+            const t = step / 4;
+            const sample: [number, number] = [
+              startLat + (lat - startLat) * t,
+              startLng + (lng - startLng) * t,
+            ];
+            const [px, py] = projection.toGlobalPixels(sample, z) as [number, number];
+            const x1 = Math.floor((px - w / 2) / TILE_SIZE);
+            const x2 = Math.floor((px + w / 2) / TILE_SIZE);
+            const y1 = Math.floor((py - h / 2) / TILE_SIZE);
+            const y2 = Math.floor((py + h / 2) / TILE_SIZE);
+
+            for (let x = x1; x <= x2; x++) {
+              for (let y = y1; y <= y2; y++) {
+                let url: string | null = null;
+                try {
+                  url = layer.getTileUrl([x, y], z);
+                } catch {
+                  continue;
+                }
+                if (!url || cache.has(url)) continue;
+                const tileUrl = url;
+                cache.add(tileUrl);
+                jobs.push(
+                  new Promise<void>((resolve) => {
+                    const img = new Image();
+                    img.onload = () => resolve();
+                    img.onerror = () => {
+                      // Разрешаем повторную попытку перед следующим перелётом.
+                      cache.delete(tileUrl);
+                      resolve();
+                    };
+                    img.src = tileUrl;
+                  }),
+                );
+                if (jobs.length >= PRELOAD_MAX_TILES) break outer;
               }
-              if (!url || cache.has(url)) continue;
-              cache.add(url);
-              jobs.push(
-                new Promise<void>((resolve) => {
-                  const img = new Image();
-                  img.onload = () => resolve();
-                  img.onerror = () => resolve();
-                  img.src = url;
-                }),
-              );
-              if (jobs.length >= PRELOAD_MAX_TILES) break outer;
             }
           }
 

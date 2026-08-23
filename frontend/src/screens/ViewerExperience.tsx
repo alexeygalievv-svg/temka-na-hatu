@@ -54,6 +54,10 @@ export function ViewerExperience({
   }, []);
 
   async function startReveal() {
+    // На холодном устройстве SDK и первый слой карты могут загружаться дольше
+    // данных карты. Интро остаётся на экране, пока ymaps.Map не готов.
+    await mapRef.current?.waitUntilReady();
+    if (cancelledRef.current) return;
     setStage('reveal');
     haptic('medium');
 
@@ -140,7 +144,7 @@ export function ViewerExperience({
         className="viewer__camera-fade"
         aria-hidden="true"
         initial={false}
-        animate={{ opacity: cameraMoving ? 0.22 : 0 }}
+        animate={{ opacity: cameraMoving ? 0.52 : 0 }}
         transition={{
           duration: (cameraMoving ? FADE_IN_MS : FADE_OUT_MS) / 1000,
           ease: CAMERA_EASE,
