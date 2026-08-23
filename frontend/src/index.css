@@ -298,12 +298,9 @@ body::after {
     transform: translateY(-26px) scale(0.2);
     opacity: 0;
   }
-  58% {
-    transform: translateY(5px) scale(1.14);
+  60% {
+    transform: translateY(2px) scale(1.06);
     opacity: 1;
-  }
-  78% {
-    transform: translateY(-3px) scale(0.96);
   }
   100% {
     transform: translateY(0) scale(1);
@@ -812,45 +809,6 @@ body::after {
 }
 
 /* ============ Экран получателя ============ */
-
-.viewer--whip-pan .map-canvas {
-  animation: whip-pan-cam var(--whip-duration, 1200ms) cubic-bezier(0.62, 0.02, 0.18, 1) both;
-  will-change: transform, filter;
-}
-
-@keyframes whip-pan-cam {
-  0% {
-    transform: scale(1) rotate(0deg);
-    filter: blur(0);
-  }
-  10% {
-    transform: scale(1.015) rotate(calc(var(--whip-rotate, 0deg) * 0.25));
-    filter: blur(1.5px);
-  }
-  48% {
-    transform: scale(1.06) rotate(var(--whip-rotate, 0deg));
-    filter: blur(8px);
-  }
-  78% {
-    transform: scale(1.025) rotate(calc(var(--whip-rotate, 0deg) * 0.2));
-    filter: blur(2px);
-  }
-  90% {
-    transform: scale(1.035) rotate(0deg);
-    filter: blur(0);
-  }
-  100% {
-    transform: scale(1) rotate(0deg);
-    filter: blur(0);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .viewer--whip-pan .map-canvas {
-    animation: none;
-    filter: blur(3px);
-  }
-}
 
 .viewer__intro {
   position: absolute;

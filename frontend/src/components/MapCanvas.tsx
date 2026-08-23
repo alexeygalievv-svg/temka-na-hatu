@@ -11,10 +11,8 @@ export interface MapPin {
 
 export interface MapHandle {
   waitUntilReady: () => Promise<void>;
-  flyTo: (lat: number, lng: number, zoom?: number, duration?: number) => Promise<void>;
-  /** Быстрый перелёт камеры к точке по маршруту (Yandex panTo + flying). */
-  dashTo: (lat: number, lng: number, zoom?: number, duration?: number) => Promise<void>;
-  fitAll: (points: Array<{ lat: number; lng: number }>, duration?: number) => Promise<void>;
+  flyTo: (lat: number, lng: number, zoom?: number, duration?: number) => void;
+  fitAll: (points: Array<{ lat: number; lng: number }>, duration?: number) => void;
 }
 
 interface MapCanvasProps {
@@ -29,30 +27,6 @@ interface MapCanvasProps {
 /** Размеры пина — должны совпадать с CSS и iconImageOffset. */
 const PIN_W = 40;
 const PIN_H = 42;
-
-/**
- * Мягкое ускорение и долгое затухание. Яндекс принимает те же значения,
- * что CSS transition-timing-function, поэтому cubic-bezier допустим.
- */
-const CAMERA_EASE = 'cubic-bezier(0.32, 0, 0.22, 1)';
-/** Whip pan: короткий разгон, длинный пролёт, ощутимое торможение. */
-const WHIP_EASE = 'cubic-bezier(0.62, 0.02, 0.18, 1)';
-
-/** Ждём не меньше duration: промис Яндекса часто резолвится сразу и обрывал анимацию. */
-function waitForAnimation(animation: unknown, minMs: number): Promise<void> {
-  const minWait = new Promise<void>((resolve) => window.setTimeout(resolve, minMs));
-  const anim =
-    animation &&
-    typeof animation === 'object' &&
-    'then' in animation &&
-    typeof (animation as { then?: unknown }).then === 'function'
-      ? Promise.resolve(animation as PromiseLike<unknown>).then(
-          () => undefined,
-          () => undefined,
-        )
-      : Promise.resolve();
-  return Promise.all([minWait, anim]).then(() => undefined);
-}
 
 function pinLayoutClass(ymaps: { templateLayoutFactory: { createClass: (html: string) => unknown } }) {
   return ymaps.templateLayoutFactory.createClass(`
@@ -258,71 +232,30 @@ export function MapCanvas({
         if (mapRef.current) return;
         await new Promise<void>((resolve) => readyWaitersRef.current.add(resolve));
       },
-      async flyTo(lat: number, lng: number, zoom = 15, duration = 1200) {
-        const map = mapRef.current;
-        if (!map) return;
-
-        const safeDuration = Math.max(800, duration);
-        const currentZoom = Number(map.getZoom?.() ?? zoom);
-        const zoomDiffers = Math.abs(currentZoom - zoom) > 0.15;
-
-        // flying: false — иначе на средних расстояниях Яндекс отъезжает зумом
-        // и возвращается обратно, и это читается как рывок.
-        const animation = zoomDiffers
-          ? map.setCenter([lat, lng], zoom, {
-              duration: safeDuration,
-              timingFunction: CAMERA_EASE,
-            })
-          : map.panTo([[lat, lng]], {
-              duration: safeDuration,
-              flying: false,
-              safe: false,
-              timingFunction: CAMERA_EASE,
-            });
-
-        await waitForAnimation(animation, safeDuration + 60);
-      },
-      async dashTo(lat: number, lng: number, zoom = 15, duration = 1200) {
-        const map = mapRef.current;
-        if (!map) return;
-        const safeDuration = Math.max(900, Math.min(duration, 3500));
-        const currentZoom = Number(map.getZoom?.() ?? zoom);
-        if (Math.abs(currentZoom - zoom) > 0.4) {
-          map.setZoom(zoom, { duration: 0 });
-        }
-        // flying: true — камера реально «пролетает» к точке, а не телепортируется.
-        const animation = map.panTo([[lat, lng]], {
-          duration: safeDuration,
-          flying: true,
-          safe: false,
-          timingFunction: WHIP_EASE,
+      flyTo(lat: number, lng: number, zoom = 15, duration = 1600) {
+        mapRef.current?.setCenter([lat, lng], zoom, {
+          duration,
+          timingFunction: 'ease-in-out',
         });
-        await waitForAnimation(animation, safeDuration + 40);
       },
-      async fitAll(points, duration = 1400) {
+      fitAll(points, duration = 1400) {
         const map = mapRef.current;
         const ymaps = ymapsRef.current;
         if (!map || !ymaps || points.length === 0) return;
-        const safeDuration = Math.max(800, duration);
-
-        const animation =
-          points.length === 1
-            ? map.panTo([[points[0].lat, points[0].lng]], {
-                duration: safeDuration,
-                flying: false,
-                safe: false,
-                timingFunction: CAMERA_EASE,
-              })
-            : map.setBounds(ymaps.util.bounds.fromPoints(points.map((p) => [p.lat, p.lng])), {
-                duration: safeDuration,
-                timingFunction: CAMERA_EASE,
-                // Задержка скрыта под fade, зато Яндекс не выберет зум,
-                // для которого в данном регионе отсутствуют тайлы.
-                checkZoomRange: true,
-                zoomMargin: 48,
-              });
-
-        await waitForAnimation(animation, safeDuration + 60);
+        if (points.length === 1) {
+          map.setCenter([points[0].lat, points[0].lng], 14, {
+            duration,
+            timingFunction: 'ease-in-out',
+          });
+          return;
+        }
+        const bounds = ymaps.util.bounds.fromPoints(points.map((p) => [p.lat, p.lng]));
+        map.setBounds(bounds, {
+          duration,
+          timingFunction: 'ease-in-out',
+          checkZoomRange: true,
+          zoomMargin: 48,
+        });
       },
     }),
     [],

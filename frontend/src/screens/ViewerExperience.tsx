@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { IntroSettings, MemoryPoint } from '../types';
 import { haptic } from '../telegram';
@@ -6,7 +6,6 @@ import { MapCanvas, type MapHandle } from '../components/MapCanvas';
 import { MemoryCard } from '../components/MemoryCard';
 import { Button } from '../components/Button';
 import { IntroOverlay } from '../components/IntroOverlay';
-import { haversineKm, whipDurationMs, whipRotateDeg } from '../lib/geo';
 
 type Stage = 'intro' | 'reveal' | 'explore';
 
@@ -21,9 +20,6 @@ interface ViewerExperienceProps {
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-/** Пауза после прибытия, чтобы успеть рассмотреть точку. */
-const ARRIVAL_HOLD_MS = 1350;
 
 /**
  * Экран получателя: интро → анимированное «путешествие» камеры по точкам
@@ -43,9 +39,6 @@ export function ViewerExperience({
   const [visibleCount, setVisibleCount] = useState(0);
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [whipping, setWhipping] = useState(false);
-  const [whipDuration, setWhipDuration] = useState(1200);
-  const [whipRotate, setWhipRotate] = useState(0);
 
   useEffect(() => {
     cancelledRef.current = false;
@@ -65,32 +58,18 @@ export function ViewerExperience({
     for (let i = 0; i < points.length; i++) {
       if (cancelledRef.current) return;
       setCurrentIndex(i);
-
-      const previous = i > 0 ? points[i - 1] : null;
-      if (!previous) {
-        await mapRef.current?.flyTo(points[i].lat, points[i].lng, 15.3, 900);
-      } else {
-        const distanceKm = haversineKm(previous, points[i]);
-        const duration = whipDurationMs(distanceKm);
-        setWhipDuration(duration);
-        setWhipRotate(whipRotateDeg(previous, points[i]));
-        setWhipping(true);
-        await mapRef.current?.dashTo(points[i].lat, points[i].lng, 15.3, duration);
-        if (cancelledRef.current) return;
-        setWhipping(false);
-        await sleep(90);
-      }
+      mapRef.current?.flyTo(points[i].lat, points[i].lng, 15.3, 1700);
+      await sleep(1850);
       if (cancelledRef.current) return;
-
       setVisibleCount(i + 1);
       haptic('light');
-      await sleep(ARRIVAL_HOLD_MS);
+      await sleep(1250);
     }
     if (cancelledRef.current) return;
     setCurrentIndex(-1);
     if (points.length > 1) {
-      await mapRef.current?.fitAll(points, 950);
-      await sleep(500);
+      mapRef.current?.fitAll(points, 1500);
+      await sleep(1600);
     }
     if (cancelledRef.current) return;
     setStage('explore');
@@ -115,15 +94,7 @@ export function ViewerExperience({
   );
 
   return (
-    <div
-      className={`viewer${whipping ? ' viewer--whip-pan' : ''}`}
-      style={
-        {
-          '--whip-duration': `${whipDuration}ms`,
-          '--whip-rotate': `${whipRotate}deg`,
-        } as CSSProperties
-      }
-    >
+    <div className="viewer">
       <MapCanvas
         ref={mapRef}
         initialCenter={points[0] ?? { lat: 55.7512, lng: 37.6184 }}
