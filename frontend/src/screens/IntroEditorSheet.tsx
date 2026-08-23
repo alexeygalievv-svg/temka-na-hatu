@@ -3,6 +3,7 @@ import { Sheet } from '../components/Sheet';
 import { IntroOverlay } from '../components/IntroOverlay';
 import { GalleryAsk } from '../components/GalleryAsk';
 import { useGalleryPicker } from '../lib/gallery';
+import { compressImage } from '../lib/compressImage';
 import { blurOnEnter } from '../lib/keyboard';
 
 interface IntroEditorSheetProps {
@@ -27,8 +28,10 @@ export function IntroEditorSheet({
   onClose,
 }: IntroEditorSheetProps) {
   const gallery = useGalleryPicker((file) => {
-    if (intro.photoPreview?.startsWith('blob:')) URL.revokeObjectURL(intro.photoPreview);
-    onIntroChange({ photoFile: file, photoPreview: URL.createObjectURL(file) });
+    void (async () => {
+      const compressed = await compressImage(file);
+      onIntroChange({ photoFile: compressed, photoPreview: URL.createObjectURL(compressed) });
+    })();
   });
 
   function removePhoto() {
@@ -120,6 +123,7 @@ export function IntroEditorSheet({
           <textarea
             value={intro.message}
             onChange={(e) => onIntroChange({ message: e.target.value })}
+            onKeyDown={blurOnEnter}
             enterKeyHint="done"
             placeholder="Здесь остались наши самые тёплые моменты"
             rows={2}

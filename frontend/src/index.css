@@ -404,6 +404,13 @@ body.map-gesturing::after {
   padding: 12px 16px 10px;
 }
 
+.builder__header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .builder__eyebrow {
   display: block;
   font-size: 11px;
@@ -411,6 +418,18 @@ body.map-gesturing::after {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--terra);
+}
+
+.builder__reset {
+  border: none;
+  background: transparent;
+  color: var(--terra-deep);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 .builder__title {
@@ -1417,29 +1436,15 @@ body.map-gesturing::after {
 
 .link-screen__link {
   width: 100%;
-  border: none;
-  cursor: pointer;
   background: var(--paper-warm);
   border-radius: var(--radius-md);
-  padding: 14px 16px;
+  padding: 10px 12px 12px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   margin-bottom: 18px;
   outline: 2px dashed var(--ink-faint);
   outline-offset: -2px;
-  transition: transform 0.15s var(--ease-out);
-}
-
-.link-screen__link:active {
-  transform: scale(0.98);
-}
-
-.link-screen__link span {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--ink);
-  word-break: break-all;
 }
 
 .link-screen__link em {
@@ -1451,14 +1456,17 @@ body.map-gesturing::after {
 
 .link-screen__fallback {
   width: 100%;
-  margin: -8px 0 14px;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: #fff;
-  font-size: 13px;
+  margin: 0;
+  padding: 8px 4px;
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 700;
   color: var(--ink);
   font-family: var(--font-ui);
+  word-break: break-all;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .link-screen__actions {

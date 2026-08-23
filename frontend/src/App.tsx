@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { DraftPoint, IntroSettings, PublishProgress } from './types';
 import { DEFAULT_INTRO } from './types';
 import { getStartParam, getUserName, haptic } from './telegram';
-import { addPoint, createMap, updateMap, uploadPhoto } from './api';
+import { addPoint, createMap, uploadPhoto } from './api';
+import { compressImage, fileFromPreview, fileToDataUrl } from './lib/compressImage';
 import { clearDraft, loadDraft, restorePoints, saveDraftDebounced } from './lib/draftStorage';
 import { BuilderScreen } from './screens/BuilderScreen';
 import { PreviewScreen } from './screens/PreviewScreen';
@@ -46,6 +47,21 @@ export default function App() {
   const [draftReady, setDraftReady] = useState(false);
   const [publishing, setPublishing] = useState<PublishProgress | null>(null);
   const [publishError, setPublishError] = useState<string | null>(null);
+  const draftRef = useRef({ mapTitle, authorName, intro, points });
+  draftRef.current = { mapTitle, authorName, intro, points };
+
+  function patchIntro(patch: Partial<IntroSettings>) {
+    setIntro((prev) => {
+      if (
+        patch.photoPreview !== undefined &&
+        prev.photoPreview?.startsWith('blob:') &&
+        prev.photoPreview !== patch.photoPreview
+      ) {
+        URL.revokeObjectURL(prev.photoPreview);
+      }
+      return { ...prev, ...patch };
+    });
+  }
 
   useEffect(() => {
     if (viewMapId) return;
@@ -65,30 +81,50 @@ export default function App() {
   }, [draftReady, viewMapId, mapTitle, authorName, intro, points]);
 
   async function publish() {
-    if (points.length === 0 || publishing) return;
+    const draft = draftRef.current;
+    if (draft.points.length === 0 || publishing) return;
     setPublishError(null);
     try {
       setPublishing({ step: 'map' });
-      const { id, link } = await createMap({
-        title: mapTitle.trim() || 'Карта воспоминаний',
-        authorName: authorName.trim() || getUserName(),
-        introEyebrow: intro.eyebrow,
-        introMessage: intro.message,
-        introButton: intro.buttonText,
-      });
-      if (intro.photoFile) {
-        setPublishing({ step: 'photo', index: 0, total: points.length });
-        const { url } = await uploadPhoto(id, intro.photoFile);
-        await updateMap(id, { introPhotoUrl: url });
-      }
-      for (let i = 0; i < points.length; i++) {
-        const point = points[i];
-        let photoUrl: string | null = null;
-        if (point.photoFile) {
-          setPublishing({ step: 'photo', index: i, total: points.length });
-          photoUrl = (await uploadPhoto(id, point.photoFile)).url;
+      const storedIntro = loadDraft()?.intro;
+      const introPreview = storedIntro?.photoPreview ?? draft.intro.photoPreview;
+      let introPhotoDataUrl =
+        introPreview?.startsWith('data:image/') ? introPreview : undefined;
+      if (!introPhotoDataUrl) {
+        const introFile = await fileFromPreview(
+          storedIntro?.photoFile ?? draft.intro.photoFile,
+          introPreview,
+          'intro.jpg',
+        );
+        if (introFile) {
+          introPhotoDataUrl = await fileToDataUrl(await compressImage(introFile));
         }
-        setPublishing({ step: 'point', index: i, total: points.length });
+      }
+
+      const mapPayload = {
+        title: draft.mapTitle.trim() || 'Карта воспоминаний',
+        authorName: draft.authorName.trim() || getUserName(),
+        introEyebrow: draft.intro.eyebrow,
+        introMessage: draft.intro.message,
+        introButton: draft.intro.buttonText,
+        introPhotoDataUrl,
+      };
+      let created: { id: string; link: string };
+      try {
+        created = await createMap(mapPayload);
+      } catch {
+        created = await createMap({ ...mapPayload, introPhotoDataUrl: undefined });
+      }
+      const { id, link } = created;
+      for (let i = 0; i < draft.points.length; i++) {
+        const point = draft.points[i];
+        let photoUrl: string | null = null;
+        const pointFile = await fileFromPreview(point.photoFile, point.photoPreview, `photo-${i}.jpg`);
+        if (pointFile) {
+          setPublishing({ step: 'photo', index: i, total: draft.points.length });
+          photoUrl = (await uploadPhoto(id, await compressImage(pointFile))).url;
+        }
+        setPublishing({ step: 'point', index: i, total: draft.points.length });
         await addPoint(id, {
           title: point.title.trim() || `Место ${i + 1}`,
           description: point.description.trim(),
@@ -100,7 +136,6 @@ export default function App() {
         });
       }
       haptic('medium');
-      clearDraft();
       setRoute({ name: 'link', link });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Что-то пошло не так';
@@ -114,6 +149,22 @@ export default function App() {
     }
   }
 
+  function resetAll() {
+    points.forEach((point) => {
+      if (point.photoPreview?.startsWith('blob:')) URL.revokeObjectURL(point.photoPreview);
+    });
+    if (intro.photoPreview?.startsWith('blob:')) URL.revokeObjectURL(intro.photoPreview);
+    clearDraft();
+    setMapTitle('Наши места');
+    setAuthorName(getUserName() ?? '');
+    setIntro(DEFAULT_INTRO);
+    setPoints([]);
+    setPublishError(null);
+    setPublishing(null);
+    setRoute({ name: 'builder' });
+    haptic('soft');
+  }
+
   return (
     <div className="app">
       <AnimatePresence mode="wait">
@@ -125,11 +176,12 @@ export default function App() {
               authorName={authorName}
               onAuthorNameChange={setAuthorName}
               intro={intro}
-              onIntroChange={setIntro}
+              onIntroChange={patchIntro}
               points={points}
               onPointsChange={setPoints}
               onPreview={() => setRoute({ name: 'preview' })}
               onPublish={publish}
+              onReset={resetAll}
               publishing={publishing}
               publishError={publishError}
               onDismissError={() => setPublishError(null)}
@@ -153,6 +205,7 @@ export default function App() {
               link={route.link}
               title={mapTitle}
               onBack={() => setRoute({ name: 'builder' })}
+              onReset={resetAll}
             />
           </Screen>
         )}

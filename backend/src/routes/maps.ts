@@ -121,6 +121,23 @@ interface CreateMapBody {
   introEyebrow?: string;
   introMessage?: string;
   introButton?: string;
+  introPhotoDataUrl?: string;
+}
+
+async function storeIntroPhotoFromDataUrl(mapId: string, raw?: string): Promise<string | null> {
+  if (!raw || typeof raw !== 'string') return null;
+  const match = raw.trim().match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=\s]+)$/);
+  if (!match) return null;
+  const mime = match[1];
+  const buffer = Buffer.from(match[2].replace(/\s/g, ''), 'base64');
+  if (!buffer.length || buffer.length > 8 * 1024 * 1024) return null;
+  const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg';
+  const path = `${mapId}/${generateMapId()}.${ext}`;
+  const { error } = await supabase.storage
+    .from(env.storageBucket)
+    .upload(path, buffer, { contentType: mime });
+  if (error) return null;
+  return supabase.storage.from(env.storageBucket).getPublicUrl(path).data.publicUrl;
 }
 
 interface UpdateMapBody {
@@ -149,6 +166,8 @@ export async function mapRoutes(app: FastifyInstance) {
       body.authorName?.trim() ||
       [user.first_name, user.last_name].filter(Boolean).join(' ');
 
+    const introPhotoUrl = await storeIntroPhotoFromDataUrl(id, body.introPhotoDataUrl);
+
     const { error } = await supabase.from('maps').insert({
       id,
       owner_tg_id: user.id,
@@ -157,10 +176,34 @@ export async function mapRoutes(app: FastifyInstance) {
       intro_eyebrow: body.introEyebrow?.trim() || 'Для тебя собрал',
       intro_message: body.introMessage?.trim() || null,
       intro_button: body.introButton?.trim() || 'Открыть карту',
+      intro_photo_url: introPhotoUrl,
     });
 
     if (error) {
-      if (isMissingIntroColumns(error)) {
+      if (isMissingIntroPhoto(error)) {
+        const { error: noPhotoError } = await supabase.from('maps').insert({
+          id,
+          owner_tg_id: user.id,
+          author_name: authorName,
+          title: body.title?.trim() || 'Карта воспоминаний',
+          intro_eyebrow: body.introEyebrow?.trim() || 'Для тебя собрал',
+          intro_message: body.introMessage?.trim() || null,
+          intro_button: body.introButton?.trim() || 'Открыть карту',
+        });
+        if (noPhotoError) {
+          if (isMissingIntroColumns(noPhotoError)) {
+            const { error: fallbackError } = await supabase.from('maps').insert({
+              id,
+              owner_tg_id: user.id,
+              author_name: authorName,
+              title: body.title?.trim() || 'Карта воспоминаний',
+            });
+            if (fallbackError) throwDbError(fallbackError, 'Не удалось создать карту');
+          } else {
+            throwDbError(noPhotoError, 'Не удалось создать карту');
+          }
+        }
+      } else if (isMissingIntroColumns(error)) {
         const { error: fallbackError } = await supabase.from('maps').insert({
           id,
           owner_tg_id: user.id,
@@ -273,17 +316,19 @@ export async function mapRoutes(app: FastifyInstance) {
     if (!file) {
       return reply.code(400).send({ error: 'File is required' });
     }
-    if (!file.mimetype.startsWith('image/')) {
+    const mime = file.mimetype || 'image/jpeg';
+    if (!mime.startsWith('image/') && mime !== 'application/octet-stream') {
       return reply.code(400).send({ error: 'Only images are allowed' });
     }
 
     const buffer = await file.toBuffer();
-    const ext = file.mimetype.split('/')[1]?.replace('jpeg', 'jpg') ?? 'jpg';
+    const contentType = mime.startsWith('image/') ? mime : 'image/jpeg';
+    const ext = contentType.split('/')[1]?.replace('jpeg', 'jpg') ?? 'jpg';
     const path = `${mapId}/${generateMapId()}.${ext}`;
 
     const { error: uploadError } = await supabase.storage
       .from(env.storageBucket)
-      .upload(path, buffer, { contentType: file.mimetype });
+      .upload(path, buffer, { contentType });
     if (uploadError) throw uploadError;
 
     const { data } = supabase.storage.from(env.storageBucket).getPublicUrl(path);

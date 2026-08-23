@@ -23,7 +23,7 @@ export function normalizeIntro(raw?: Partial<IntroSettings> | null): IntroSettin
     message: raw?.message ?? DEFAULT_INTRO.message,
     buttonText: raw?.buttonText ?? DEFAULT_INTRO.buttonText,
     photoPreview: raw?.photoPreview?.trim() ? raw.photoPreview : null,
-    photoFile: raw?.photoFile ?? null,
+    photoFile: raw?.photoFile instanceof File && raw.photoFile.size > 0 ? raw.photoFile : null,
   };
 }
 

@@ -19,11 +19,12 @@ interface BuilderScreenProps {
   authorName: string;
   onAuthorNameChange: (value: string) => void;
   intro: IntroSettings;
-  onIntroChange: (intro: IntroSettings) => void;
+  onIntroChange: (patch: Partial<IntroSettings>) => void;
   points: DraftPoint[];
   onPointsChange: (points: DraftPoint[]) => void;
   onPreview: () => void;
   onPublish: () => void;
+  onReset: () => void;
   publishing: PublishProgress | null;
   publishError: string | null;
   onDismissError: () => void;
@@ -51,6 +52,7 @@ export function BuilderScreen({
   onPointsChange,
   onPreview,
   onPublish,
+  onReset,
   publishing,
   publishError,
   onDismissError,
@@ -144,7 +146,20 @@ export function BuilderScreen({
       />
 
       <header className="builder__header">
-        <span className="builder__eyebrow">Карта воспоминаний</span>
+        <div className="builder__header-top">
+          <span className="builder__eyebrow">Карта воспоминаний</span>
+          {(points.length > 0 || intro.photoFile || intro.photoPreview) && (
+            <button
+              type="button"
+              className="builder__reset"
+              onClick={() => {
+                if (window.confirm('Сбросить карту и начать заново?')) onReset();
+              }}
+            >
+              Сбросить всё
+            </button>
+          )}
+        </div>
         <input
           className="builder__title"
           value={title}
@@ -179,7 +194,7 @@ export function BuilderScreen({
         intro={intro}
         pointCount={points.length}
         onAuthorNameChange={onAuthorNameChange}
-        onIntroChange={(patch) => onIntroChange({ ...intro, ...patch })}
+          onIntroChange={onIntroChange}
         onClose={() => setIntroOpen(false)}
       />
 

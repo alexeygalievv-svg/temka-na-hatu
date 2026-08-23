@@ -33,6 +33,7 @@ export function createMap(payload: {
   introEyebrow?: string;
   introMessage?: string;
   introButton?: string;
+  introPhotoDataUrl?: string;
 }) {
   return request<{ id: string; link: string }>('/api/maps', {
     method: 'POST',
@@ -43,6 +44,7 @@ export function createMap(payload: {
       introEyebrow: payload.introEyebrow,
       introMessage: payload.introMessage,
       introButton: payload.introButton,
+      introPhotoDataUrl: payload.introPhotoDataUrl,
     }),
   });
 }

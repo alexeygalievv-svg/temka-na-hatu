@@ -99,7 +99,7 @@ export function loadDraft(): StoredDraft | null {
 
 function restoreIntro(raw: Partial<IntroSettings> | undefined): IntroSettings {
   const intro = normalizeIntro(raw);
-  if (intro.photoPreview?.startsWith('data:') && !intro.photoFile) {
+  if (intro.photoPreview?.startsWith('data:') && !(intro.photoFile instanceof File)) {
     return {
       ...intro,
       photoFile: dataUrlToFile(intro.photoPreview, 'intro.jpg'),
@@ -166,7 +166,18 @@ export function saveDraftDebounced(draft: {
           }));
           localStorage.setItem(
             STORAGE_KEY,
-            JSON.stringify({ ...draft, points }),
+            JSON.stringify({
+              mapTitle: draft.mapTitle,
+              authorName: draft.authorName,
+              intro: {
+                eyebrow: draft.intro.eyebrow,
+                message: draft.intro.message,
+                buttonText: draft.intro.buttonText,
+                photoPreview: null,
+                photoFile: null,
+              },
+              points,
+            }),
           );
         } catch {
           /* игнорируем */

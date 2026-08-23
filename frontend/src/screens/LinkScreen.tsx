@@ -7,38 +7,36 @@ interface LinkScreenProps {
   link: string;
   title: string;
   onBack: () => void;
+  onReset: () => void;
 }
 
-export function LinkScreen({ link, title, onBack }: LinkScreenProps) {
+export function LinkScreen({ link, title, onBack, onReset }: LinkScreenProps) {
   const [copied, setCopied] = useState(false);
-  const [manualCopy, setManualCopy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  function selectLink() {
+    const input = inputRef.current;
+    if (!input) return;
+    input.focus();
+    input.select();
+    input.setSelectionRange(0, link.length);
+  }
+
   async function copy() {
-    const ok = await copyText(link);
+    const ok = await copyText(link, inputRef.current);
+    selectLink();
     if (ok) {
       setCopied(true);
-      setManualCopy(false);
       haptic('medium');
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setCopied(false), 2200);
       return;
     }
-
-    setManualCopy(true);
     haptic('soft');
-    requestAnimationFrame(() => {
-      const input = inputRef.current;
-      if (!input) return;
-      input.focus();
-      input.select();
-      input.setSelectionRange(0, link.length);
-    });
   }
 
   useEffect(() => {
-    void copy();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    requestAnimationFrame(selectLink);
+  }, [link]);
 
   return (
     <div className="link-screen">
@@ -64,39 +62,44 @@ export function LinkScreen({ link, title, onBack }: LinkScreenProps) {
           «{title.trim() || 'Карта воспоминаний'}» ждёт своего адресата
         </p>
 
-        <button type="button" className="link-screen__link" onClick={copy}>
-          <span>{link.replace('https://', '')}</span>
-          <em>
-            {copied
-              ? 'Скопировано'
-              : manualCopy
-                ? 'Выделите ссылку и скопируйте'
-                : 'Нажмите, чтобы скопировать'}
-          </em>
-        </button>
-
-        {manualCopy && (
+        <label className="link-screen__link">
           <input
             ref={inputRef}
             className="link-screen__fallback"
             readOnly
             value={link}
             onFocus={(e) => e.target.select()}
+            onClick={(e) => e.currentTarget.select()}
           />
-        )}
+          <em>{copied ? 'Скопировано' : 'Нажмите «Скопировать» или зажмите ссылку'}</em>
+        </label>
 
         <div className="link-screen__actions">
-          <Button wide onClick={copy}>
+          <Button wide onClick={() => void copy()}>
             {copied ? 'Скопировано' : 'Скопировать ссылку'}
           </Button>
           <Button
             wide
-            onClick={() => shareLink(link, `Я собрал для тебя карту наших мест: «${title.trim() || 'Карта воспоминаний'}»`)}
+            onClick={() =>
+              shareLink(
+                link,
+                `Я собрал для тебя карту наших мест: «${title.trim() || 'Карта воспоминаний'}»`,
+              )
+            }
           >
             Отправить в Telegram
           </Button>
           <Button variant="ghost" wide onClick={onBack}>
             Вернуться к карте
+          </Button>
+          <Button
+            variant="ghost"
+            wide
+            onClick={() => {
+              if (window.confirm('Сбросить карту и начать заново?')) onReset();
+            }}
+          >
+            Сбросить всё
           </Button>
         </div>
       </motion.div>

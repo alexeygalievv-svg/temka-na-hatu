@@ -7,11 +7,11 @@ import { telegramRoutes } from './routes/telegram.js';
 import { supabase } from './supabase.js';
 import { setWebhook } from './telegramBot.js';
 
-const app = Fastify({ logger: true });
+const app = Fastify({ logger: true, bodyLimit: 2 * 1024 * 1024 });
 
 await app.register(cors, { origin: true });
 await app.register(multipart, {
-  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+  limits: { fileSize: 16 * 1024 * 1024, files: 1 },
 });
 
 app.get('/api/health', async () => {

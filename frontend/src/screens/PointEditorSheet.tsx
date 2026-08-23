@@ -4,6 +4,7 @@ import { Button } from '../components/Button';
 import { GalleryAsk } from '../components/GalleryAsk';
 import { useGalleryPicker } from '../lib/gallery';
 import { DateField } from '../components/DateField';
+import { compressImage } from '../lib/compressImage';
 import { blurOnEnter, hideSoftKeyboard } from '../lib/keyboard';
 
 interface PointEditorSheetProps {
@@ -17,8 +18,11 @@ interface PointEditorSheetProps {
 export function PointEditorSheet({ point, index, onChange, onDelete, onClose }: PointEditorSheetProps) {
   const gallery = useGalleryPicker((file) => {
     if (!point) return;
-    if (point.photoPreview) URL.revokeObjectURL(point.photoPreview);
-    onChange({ photoFile: file, photoPreview: URL.createObjectURL(file) });
+    void (async () => {
+      const compressed = await compressImage(file);
+      if (point.photoPreview) URL.revokeObjectURL(point.photoPreview);
+      onChange({ photoFile: compressed, photoPreview: URL.createObjectURL(compressed) });
+    })();
   });
 
   return (
@@ -79,10 +83,11 @@ export function PointEditorSheet({ point, index, onChange, onDelete, onClose }: 
           </div>
 
           <label className="editor__field">
-            <span>История этого места</span>
+            <span>Описание</span>
             <textarea
               value={point.description}
               onChange={(e) => onChange({ description: e.target.value })}
+              onKeyDown={blurOnEnter}
               enterKeyHint="done"
               placeholder="Расскажите, что здесь произошло…"
               rows={4}
