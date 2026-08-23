@@ -12,7 +12,8 @@ export interface MapPin {
 export interface MapHandle {
   waitUntilReady: () => Promise<void>;
   flyTo: (lat: number, lng: number, zoom?: number, duration?: number) => Promise<void>;
-  jumpTo: (lat: number, lng: number, zoom?: number, duration?: number) => Promise<void>;
+  /** Быстрый перелёт камеры к точке по маршруту (Yandex panTo + flying). */
+  dashTo: (lat: number, lng: number, zoom?: number, duration?: number) => Promise<void>;
   fitAll: (points: Array<{ lat: number; lng: number }>, duration?: number) => Promise<void>;
 }
 
@@ -279,14 +280,22 @@ export function MapCanvas({
 
         await waitForAnimation(animation, safeDuration + 60);
       },
-      async jumpTo(lat: number, lng: number, zoom = 15, duration = 360) {
+      async dashTo(lat: number, lng: number, zoom = 15, duration = 640) {
         const map = mapRef.current;
         if (!map) return;
-        const animation = map.setCenter([lat, lng], zoom, {
-          duration,
-          timingFunction: 'ease-out',
+        const safeDuration = Math.max(480, Math.min(duration, 860));
+        const currentZoom = Number(map.getZoom?.() ?? zoom);
+        if (Math.abs(currentZoom - zoom) > 0.4) {
+          map.setZoom(zoom, { duration: 0 });
+        }
+        // flying: true — камера реально «пролетает» к точке, а не телепортируется.
+        const animation = map.panTo([[lat, lng]], {
+          duration: safeDuration,
+          flying: true,
+          safe: false,
+          timingFunction: 'ease-in-out',
         });
-        await waitForAnimation(animation, duration + 40);
+        await waitForAnimation(animation, safeDuration + 40);
       },
       async fitAll(points, duration = 1400) {
         const map = mapRef.current;
