@@ -50,7 +50,7 @@ export function MemoryCard({ point, index, total, onClose }: MemoryCardProps) {
 
     const body = bodyRef.current;
     const observer = body ? new ResizeObserver(fit) : null;
-    observer?.observe(body);
+    if (body) observer?.observe(body);
 
     const imgs = body?.querySelectorAll('img') ?? [];
     imgs.forEach((img) => {
