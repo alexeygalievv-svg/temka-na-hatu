@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import type { MemoryMapData } from '../types';
+import { normalizeIntro } from '../types';
 import { fetchMap } from '../api';
 import { ViewerExperience } from './ViewerExperience';
 
@@ -52,7 +53,7 @@ export function ViewerScreen({ mapId }: ViewerScreenProps) {
     <ViewerExperience
       title={data.title}
       authorName={data.authorName}
-      intro={data.intro}
+      intro={normalizeIntro(data.intro)}
       points={data.points}
     />
   );

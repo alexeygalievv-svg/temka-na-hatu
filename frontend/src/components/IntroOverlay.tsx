@@ -8,6 +8,7 @@ interface IntroOverlayProps {
   eyebrow: string;
   message: string;
   buttonText: string;
+  photoPreview?: string | null;
   pointCount: number;
   onOpen?: () => void;
   /** Компактный предпросмотр в редакторе */
@@ -20,6 +21,7 @@ export function IntroOverlay({
   eyebrow,
   message,
   buttonText,
+  photoPreview,
   pointCount,
   onOpen,
   compact = false,
@@ -53,6 +55,26 @@ export function IntroOverlay({
         >
           от {authorName.trim()}
         </motion.span>
+      )}
+      {photoPreview && (
+        <motion.figure
+          className={`intro-photo${compact ? ' intro-photo--compact' : ''}`}
+          initial={{ opacity: 0, scale: 0.86, rotate: 8, y: 18 }}
+          animate={{
+            opacity: 1,
+            scale: 1,
+            rotate: compact ? [-1.4, -0.3, -1.4] : [-2.2, -0.4, -2.2],
+            y: compact ? [0, -3, 0] : [0, -7, 0],
+          }}
+          transition={{
+            opacity: { delay: 0.26, duration: 0.4 },
+            scale: { delay: 0.26, type: 'spring', stiffness: 180, damping: 16 },
+            rotate: { delay: 0.55, duration: compact ? 5.2 : 6.2, repeat: Infinity, ease: 'easeInOut' },
+            y: { delay: 0.55, duration: compact ? 5.2 : 6.2, repeat: Infinity, ease: 'easeInOut' },
+          }}
+        >
+          <img src={photoPreview} alt="" draggable={false} />
+        </motion.figure>
       )}
       <motion.div
         className="viewer__intro-meta"

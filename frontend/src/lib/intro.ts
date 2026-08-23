@@ -3,13 +3,29 @@ export interface IntroSettings {
   eyebrow: string;
   message: string;
   buttonText: string;
+  /** Превью или опубликованный URL полароид-фото. */
+  photoPreview: string | null;
+  /** Локальный файл до публикации. */
+  photoFile: File | null;
 }
 
 export const DEFAULT_INTRO: IntroSettings = {
   eyebrow: 'Для тебя собрал',
   message: 'Здесь остались наши самые тёплые моменты',
   buttonText: 'Открыть карту',
+  photoPreview: null,
+  photoFile: null,
 };
+
+export function normalizeIntro(raw?: Partial<IntroSettings> | null): IntroSettings {
+  return {
+    eyebrow: raw?.eyebrow ?? DEFAULT_INTRO.eyebrow,
+    message: raw?.message ?? DEFAULT_INTRO.message,
+    buttonText: raw?.buttonText ?? DEFAULT_INTRO.buttonText,
+    photoPreview: raw?.photoPreview ?? null,
+    photoFile: raw?.photoFile ?? null,
+  };
+}
 
 export function formatPlacesWord(count: number): string {
   const mod10 = count % 10;

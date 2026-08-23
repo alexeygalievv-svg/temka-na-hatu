@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import type { DraftPoint, IntroSettings, PublishProgress } from './types';
 import { DEFAULT_INTRO } from './types';
 import { getStartParam, getUserName, haptic } from './telegram';
-import { addPoint, createMap, uploadPhoto } from './api';
+import { addPoint, createMap, updateMap, uploadPhoto } from './api';
 import { clearDraft, loadDraft, restorePoints, saveDraftDebounced } from './lib/draftStorage';
 import { BuilderScreen } from './screens/BuilderScreen';
 import { PreviewScreen } from './screens/PreviewScreen';
@@ -60,7 +60,7 @@ export default function App() {
     if (saved) {
       setMapTitle(saved.mapTitle);
       setAuthorName(saved.authorName);
-      setIntro(saved.intro);
+      setIntro(saved.intro ?? DEFAULT_INTRO);
       setPoints(restorePoints(saved.points));
     }
     setDraftReady(true);
@@ -83,6 +83,11 @@ export default function App() {
         introMessage: intro.message,
         introButton: intro.buttonText,
       });
+      if (intro.photoFile) {
+        setPublishing({ step: 'photo', index: 0, total: points.length });
+        const { url } = await uploadPhoto(id, intro.photoFile);
+        await updateMap(id, { introPhotoUrl: url });
+      }
       for (let i = 0; i < points.length; i++) {
         const point = points[i];
         let photoUrl: string | null = null;

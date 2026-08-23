@@ -1,7 +1,7 @@
 import type { IntroSettings } from './lib/intro';
 
 export type { IntroSettings } from './lib/intro';
-export { DEFAULT_INTRO } from './lib/intro';
+export { DEFAULT_INTRO, normalizeIntro } from './lib/intro';
 
 /** Точка, как её видит получатель (данные с сервера или из предпросмотра). */
 export interface MemoryPoint {

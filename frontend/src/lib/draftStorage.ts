@@ -1,5 +1,5 @@
 import type { DraftPoint, IntroSettings } from '../types';
-import { DEFAULT_INTRO } from '../types';
+import { normalizeIntro } from '../types';
 
 const STORAGE_KEY = 'memory-map-draft-v1';
 
@@ -86,12 +86,43 @@ export function loadDraft(): StoredDraft | null {
     return {
       mapTitle: data.mapTitle ?? 'Наши места',
       authorName: data.authorName ?? '',
-      intro: data.intro ?? DEFAULT_INTRO,
+      intro: restoreIntro(data.intro),
       points: data.points,
     };
   } catch {
     return null;
   }
+}
+
+function restoreIntro(raw: Partial<IntroSettings> | undefined): IntroSettings {
+  const intro = normalizeIntro(raw);
+  if (intro.photoPreview?.startsWith('data:') && !intro.photoFile) {
+    return {
+      ...intro,
+      photoFile: dataUrlToFile(intro.photoPreview, 'intro.jpg'),
+    };
+  }
+  return intro;
+}
+
+async function introToStored(intro: IntroSettings): Promise<IntroSettings> {
+  let photoPreview = intro.photoPreview;
+  if (intro.photoFile) {
+    photoPreview = await fileToDataUrl(intro.photoFile);
+  } else if (photoPreview && !photoPreview.startsWith('data:')) {
+    try {
+      photoPreview = await fileToDataUrl(await fetch(photoPreview).then((r) => r.blob()));
+    } catch {
+      /* оставляем как есть */
+    }
+  }
+  return {
+    eyebrow: intro.eyebrow,
+    message: intro.message,
+    buttonText: intro.buttonText,
+    photoPreview,
+    photoFile: null,
+  };
 }
 
 export function restorePoints(stored: StoredPoint[]): DraftPoint[] {
@@ -114,7 +145,7 @@ export function saveDraftDebounced(draft: {
         const stored: StoredDraft = {
           mapTitle: draft.mapTitle,
           authorName: draft.authorName,
-          intro: draft.intro,
+          intro: await introToStored(draft.intro),
           points,
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));

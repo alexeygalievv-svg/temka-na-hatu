@@ -29,10 +29,9 @@ interface MapCanvasProps {
 /** Размеры пина — должны совпадать с CSS и iconImageOffset. */
 const PIN_W = 40;
 const PIN_H = 42;
-/** Веер только когда сердечки уже полностью слиплись и не отличить, одно там или несколько. */
-const PIN_FAN_ON_PX = 10;
-/** Выключается с запасом, чтобы при зуме не дёргалось на границе. */
-const PIN_FAN_OFF_PX = 28;
+/** Сердечко 40px: если ближе — визуально уже стопка, даже если координаты чуть разные. */
+const PIN_FAN_ON_PX = 34;
+const PIN_FAN_OFF_PX = 46;
 
 function clusterMaxDistance<T extends { px: number; py: number }>(items: T[]): number {
   let max = 0;
@@ -114,11 +113,12 @@ function computePinFans(
       const angles = fanned ? fanAngles(cluster.length) : cluster.map(() => 0);
       const topPin = cluster[cluster.length - 1]?.pin;
       cluster.forEach((item, index) => {
+        const isTop = !fanned || item.pin.id === topPin?.id;
         offsets.set(item.pin.id, {
           angle: angles[index] ?? 0,
-          z: item.pin.active ? 1300 : 1000 + index,
+          z: item.pin.active ? 1400 : isTop ? 1200 + index : 900 + index,
           clickId: fanned && topPin ? topPin.id : item.pin.id,
-          interactive: true,
+          interactive: isTop,
         });
       });
     }
@@ -517,7 +517,7 @@ function waitForVisibleTiles(map: any, timeoutMs: number): Promise<void> {
 
 function pinLayoutClass(ymaps: { templateLayoutFactory: { createClass: (html: string) => unknown } }) {
   return ymaps.templateLayoutFactory.createClass(`
-    <div class="map-pin map-pin--heart $[properties.activeClass]" style="$[properties.fanStyle]">
+    <div class="map-pin map-pin--heart $[properties.activeClass] $[properties.fanClass]" style="$[properties.fanStyle]">
       <div class="map-pin__inner">
         <div class="map-pin__heart-wrap">
           <svg class="map-pin__heart-svg" viewBox="0 0 40 42" xmlns="http://www.w3.org/2000/svg">
@@ -552,6 +552,8 @@ export function MapCanvas({
   const pinStateRef = useRef<Map<string, string>>(new Map());
   /** Запоминаем, был ли веер у кластера — гистерезис против дёрганья на границе зума. */
   const pinFanLatchRef = useRef<Map<string, boolean>>(new Map());
+  /** Клик по любому сердечку веера → id верхней (видимая цифра). */
+  const pinClickAliasRef = useRef<Map<string, string>>(new Map());
   /** URL тайлов, которые уже скачали — не гоняем сеть повторно. */
   const preloadedTilesRef = useRef<Set<string>>(new Set());
   const readyWaitersRef = useRef<Set<() => void>>(new Set());
@@ -681,16 +683,19 @@ export function MapCanvas({
 
     const applyPins = () => {
       const fans = computePinFans(map, pins, pinFanLatchRef.current);
+      const aliases = pinClickAliasRef.current;
+      aliases.clear();
       pins.forEach((pin) => {
         let placemark = existing.get(pin.id);
         const fan = fans.get(pin.id) ?? { angle: 0, z: 1000, clickId: pin.id, interactive: true };
+        aliases.set(pin.id, fan.clickId);
         const props = {
           label: pin.label,
           activeClass: pin.active ? 'map-pin--active' : '',
+          fanClass: fan.interactive ? 'map-pin--fan-top' : 'map-pin--fan-under',
           fanStyle: `--fan-angle:${fan.angle}deg;`,
-          clickId: fan.clickId,
         };
-        const signature = `${pin.label}|${props.activeClass}|${pin.lat}|${pin.lng}|${fan.angle}|${fan.clickId}|${fan.interactive}`;
+        const signature = `${pin.label}|${props.activeClass}|${props.fanClass}|${pin.lat}|${pin.lng}|${fan.angle}|${fan.clickId}|${fan.interactive}`;
 
         if (!placemark) {
           placemark = new ymaps.Placemark([pin.lat, pin.lng], props, {
@@ -703,13 +708,16 @@ export function MapCanvas({
             iconContentLayout: layout,
             hasBalloon: false,
             hasHint: false,
+            cursor: fan.interactive ? 'pointer' : 'default',
             zIndex: fan.z,
+            zIndexHover: fan.z,
             interactivityModel: fan.interactive ? 'default#opaque' : 'default#silent',
           });
+          const ownId = pin.id;
           placemark.events.add('click', (event: { stopPropagation: () => void }) => {
             event.stopPropagation();
-            const clickId = placemark.properties.get('clickId') as string;
-            pinClickRef.current?.(clickId);
+            const target = pinClickAliasRef.current.get(ownId) ?? ownId;
+            pinClickRef.current?.(target);
           });
           map.geoObjects.add(placemark);
           existing.set(pin.id, placemark);
@@ -719,6 +727,8 @@ export function MapCanvas({
           placemark.options.set({
             iconImageOffset: [-PIN_W / 2, -PIN_H],
             zIndex: fan.z,
+            zIndexHover: fan.z,
+            cursor: fan.interactive ? 'pointer' : 'default',
             interactivityModel: fan.interactive ? 'default#opaque' : 'default#silent',
           });
         }
@@ -729,11 +739,29 @@ export function MapCanvas({
 
     applyPins();
 
-    // Веер пересчитываем только после жеста. Во время pinch/pan иначе дёргается.
-    map.events.add('actionend', applyPins);
+    let settleTimer: number | null = null;
+    const settleFan = () => {
+      if (settleTimer !== null) window.clearTimeout(settleTimer);
+      settleTimer = window.setTimeout(() => {
+        settleTimer = null;
+        applyPins();
+      }, 420);
+    };
+    const onActionBegin = () => {
+      if (settleTimer !== null) {
+        window.clearTimeout(settleTimer);
+        settleTimer = null;
+      }
+    };
+
+    // Не трогаем веер, пока палец/колёсико двигают карту — иначе анимация и углы дёргаются.
+    map.events.add('actionbegin', onActionBegin);
+    map.events.add('actionend', settleFan);
 
     return () => {
-      map.events.remove('actionend', applyPins);
+      if (settleTimer !== null) window.clearTimeout(settleTimer);
+      map.events.remove('actionbegin', onActionBegin);
+      map.events.remove('actionend', settleFan);
     };
   }, [pins, ready]);
 

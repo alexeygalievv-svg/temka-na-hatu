@@ -16,6 +16,11 @@ function isMissingIntroColumns(error: PostgrestError): boolean {
   return text.includes('intro_');
 }
 
+function isMissingIntroPhoto(error: PostgrestError): boolean {
+  const text = `${error.message ?? ''} ${error.details ?? ''} ${error.hint ?? ''}`.toLowerCase();
+  return text.includes('intro_photo');
+}
+
 function throwDbError(error: PostgrestError, context: string): never {
   const err = new Error(`${context}: ${error.message}`) as Error & { statusCode?: number };
   err.statusCode = 500;
@@ -64,6 +69,10 @@ interface CreateMapBody {
   introEyebrow?: string;
   introMessage?: string;
   introButton?: string;
+}
+
+interface UpdateMapBody {
+  introPhotoUrl?: string | null;
 }
 
 interface CreatePointBody {
@@ -129,6 +138,32 @@ export async function mapRoutes(app: FastifyInstance) {
       id,
       link,
     });
+  });
+
+  app.patch('/api/maps/:id', async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+
+    const { id: mapId } = request.params as { id: string };
+    if (!(await requireOwnedMap(mapId, user, reply))) return;
+
+    const body = (request.body ?? {}) as UpdateMapBody;
+    if (typeof body.introPhotoUrl !== 'string' || !body.introPhotoUrl.trim()) {
+      return reply.code(400).send({ error: 'introPhotoUrl is required' });
+    }
+
+    const { error } = await supabase
+      .from('maps')
+      .update({ intro_photo_url: body.introPhotoUrl.trim() })
+      .eq('id', mapId);
+    if (error) {
+      if (isMissingIntroPhoto(error)) {
+        return reply.code(200).send({ ok: true });
+      }
+      throwDbError(error, 'Не удалось сохранить фото открытия');
+    }
+
+    return reply.code(200).send({ ok: true });
   });
 
   // Добавление точки
@@ -203,11 +238,53 @@ export async function mapRoutes(app: FastifyInstance) {
 
     const { data: map, error: mapError } = await supabase
       .from('maps')
-      .select('id, title, author_name, intro_eyebrow, intro_message, intro_button, created_at')
+      .select('id, title, author_name, intro_eyebrow, intro_message, intro_button, intro_photo_url, created_at')
       .eq('id', mapId)
       .maybeSingle();
     if (mapError) {
-      if (isMissingIntroColumns(mapError)) {
+      if (isMissingIntroPhoto(mapError)) {
+        const { data: noPhotoMap, error: noPhotoError } = await supabase
+          .from('maps')
+          .select('id, title, author_name, intro_eyebrow, intro_message, intro_button, created_at')
+          .eq('id', mapId)
+          .maybeSingle();
+        if (noPhotoError) {
+          if (isMissingIntroColumns(noPhotoError)) {
+            /* ниже общий fallback */
+          } else {
+            throwDbError(noPhotoError, 'Не удалось загрузить карту');
+          }
+        } else if (noPhotoMap) {
+          const { data: points, error: pointsError } = await supabase
+            .from('points')
+            .select('id, title, description, photo_url, lat, lng, order_index')
+            .eq('map_id', mapId)
+            .order('order_index', { ascending: true });
+          if (pointsError) throwDbError(pointsError, 'Не удалось загрузить точки');
+          return {
+            id: noPhotoMap.id,
+            title: noPhotoMap.title,
+            authorName: noPhotoMap.author_name,
+            intro: {
+              eyebrow: noPhotoMap.intro_eyebrow ?? 'Для тебя собрал',
+              message: noPhotoMap.intro_message ?? '',
+              buttonText: noPhotoMap.intro_button ?? 'Открыть карту',
+              photoPreview: null,
+              photoFile: null,
+            },
+            points: (points ?? []).map((p) => ({
+              id: p.id,
+              title: p.title,
+              description: p.description ?? '',
+              photoUrl: p.photo_url ?? null,
+              lat: p.lat,
+              lng: p.lng,
+              orderIndex: p.order_index,
+            })),
+          };
+        }
+      }
+      if (isMissingIntroColumns(mapError) || isMissingIntroPhoto(mapError)) {
         const { data: legacyMap, error: legacyError } = await supabase
           .from('maps')
           .select('id, title, author_name, created_at')
@@ -229,6 +306,8 @@ export async function mapRoutes(app: FastifyInstance) {
             eyebrow: 'Для тебя собрал',
             message: '',
             buttonText: 'Открыть карту',
+            photoPreview: null,
+            photoFile: null,
           },
           points: (points ?? []).map((p) => ({
             id: p.id,
@@ -260,6 +339,8 @@ export async function mapRoutes(app: FastifyInstance) {
         eyebrow: map.intro_eyebrow ?? 'Для тебя собрал',
         message: map.intro_message ?? '',
         buttonText: map.intro_button ?? 'Открыть карту',
+        photoPreview: map.intro_photo_url ?? null,
+        photoFile: null,
       },
       points: (points ?? []).map((p) => ({
         id: p.id,

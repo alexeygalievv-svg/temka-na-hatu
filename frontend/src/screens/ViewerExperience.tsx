@@ -134,6 +134,7 @@ export function ViewerExperience({
               eyebrow={intro.eyebrow}
               message={intro.message}
               buttonText={intro.buttonText}
+              photoPreview={intro.photoPreview}
               pointCount={points.length}
               onOpen={startReveal}
             />

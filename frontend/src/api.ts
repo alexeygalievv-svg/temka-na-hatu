@@ -47,6 +47,19 @@ export function createMap(payload: {
   });
 }
 
+export function updateMap(
+  mapId: string,
+  payload: {
+    introPhotoUrl?: string | null;
+  },
+) {
+  return request<{ ok: true }>(`/api/maps/${mapId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(payload),
+  });
+}
+
 export function addPoint(
   mapId: string,
   point: {
