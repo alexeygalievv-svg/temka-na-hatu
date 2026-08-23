@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { IntroSettings, MemoryPoint } from '../types';
 import { haptic } from '../telegram';
@@ -21,6 +21,32 @@ interface ViewerExperienceProps {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const SPEED_STREAKS = [
+  { y: 7, x: -18, len: 28, h: 1.4, opacity: 0.36, delay: 0 },
+  { y: 12, x: 36, len: 42, h: 2.2, opacity: 0.48, delay: 34 },
+  { y: 18, x: -42, len: 68, h: 2.8, opacity: 0.55, delay: 66 },
+  { y: 23, x: 18, len: 24, h: 1.3, opacity: 0.3, delay: 112 },
+  { y: 29, x: -10, len: 54, h: 2.4, opacity: 0.5, delay: 26 },
+  { y: 34, x: 48, len: 76, h: 3.2, opacity: 0.58, delay: 78 },
+  { y: 40, x: -34, len: 36, h: 1.7, opacity: 0.38, delay: 126 },
+  { y: 46, x: 10, len: 88, h: 3.4, opacity: 0.62, delay: 44 },
+  { y: 51, x: -50, len: 58, h: 2.5, opacity: 0.46, delay: 92 },
+  { y: 57, x: 28, len: 32, h: 1.5, opacity: 0.34, delay: 150 },
+  { y: 63, x: -24, len: 96, h: 3.6, opacity: 0.64, delay: 18 },
+  { y: 68, x: 44, len: 48, h: 2.1, opacity: 0.44, delay: 104 },
+  { y: 74, x: -12, len: 72, h: 2.8, opacity: 0.52, delay: 58 },
+  { y: 80, x: 22, len: 26, h: 1.4, opacity: 0.32, delay: 136 },
+  { y: 86, x: -40, len: 62, h: 2.6, opacity: 0.48, delay: 8 },
+] as const;
+
+function movementAngle(from: MemoryPoint | null, to: MemoryPoint): number {
+  if (!from) return -10;
+  const dx = to.lng - from.lng;
+  const dy = -(to.lat - from.lat);
+  if (Math.abs(dx) + Math.abs(dy) < 0.000001) return -10;
+  return (Math.atan2(dy, dx) * 180) / Math.PI;
+}
+
 /**
  * Экран получателя: интро → анимированное «путешествие» камеры по точкам
  * с поочерёдным появлением пинов → свободное исследование карты.
@@ -39,7 +65,8 @@ export function ViewerExperience({
   const [visibleCount, setVisibleCount] = useState(0);
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [cameraShaking, setCameraShaking] = useState(false);
+  const [speedTransition, setSpeedTransition] = useState(false);
+  const [speedAngle, setSpeedAngle] = useState(-10);
 
   useEffect(() => {
     cancelledRef.current = false;
@@ -60,18 +87,19 @@ export function ViewerExperience({
       if (cancelledRef.current) return;
       setCurrentIndex(i);
 
-      // «Встряхивание камеры»: старая карта остаётся на экране, но быстро
-      // размывается и дрожит. Центр меняется на пике эффекта.
-      setCameraShaking(true);
-      await sleep(180);
+      // Speed lines: карта остаётся видимой, но в пик скорости покрывается
+      // направленными motion streaks; центр меняется внутри этого пика.
+      setSpeedAngle(movementAngle(i > 0 ? points[i - 1] : null, points[i]));
+      setSpeedTransition(true);
+      await sleep(150);
       if (cancelledRef.current) return;
 
-      await mapRef.current?.jumpTo(points[i].lat, points[i].lng, 15.3, 380);
+      await mapRef.current?.jumpTo(points[i].lat, points[i].lng, 15.3, 320);
       if (cancelledRef.current) return;
 
-      await sleep(220);
-      setCameraShaking(false);
       await sleep(260);
+      setSpeedTransition(false);
+      await sleep(300);
       if (cancelledRef.current) return;
 
       setVisibleCount(i + 1);
@@ -81,12 +109,8 @@ export function ViewerExperience({
     if (cancelledRef.current) return;
     setCurrentIndex(-1);
     if (points.length > 1) {
-      setCameraShaking(true);
-      await sleep(180);
-      await mapRef.current?.fitAll(points, 650);
-      await sleep(180);
-      setCameraShaking(false);
-      await sleep(260);
+      await mapRef.current?.fitAll(points, 950);
+      await sleep(500);
     }
     if (cancelledRef.current) return;
     setStage('explore');
@@ -111,7 +135,7 @@ export function ViewerExperience({
   );
 
   return (
-    <div className={`viewer${cameraShaking ? ' viewer--camera-shaking' : ''}`}>
+    <div className={`viewer${speedTransition ? ' viewer--speed-transition' : ''}`}>
       <MapCanvas
         ref={mapRef}
         initialCenter={points[0] ?? { lat: 55.7512, lng: 37.6184 }}
@@ -123,6 +147,29 @@ export function ViewerExperience({
           setActiveId(id);
         }}
       />
+
+      <div
+        className="viewer__speed-lines"
+        aria-hidden="true"
+        style={{ '--streak-angle': `${speedAngle}deg` } as CSSProperties}
+      >
+        {SPEED_STREAKS.map((streak, index) => (
+          <span
+            key={index}
+            className="viewer__speed-line"
+            style={
+              {
+                '--streak-y': `${streak.y}%`,
+                '--streak-x': `${streak.x}vw`,
+                '--streak-len': `${streak.len}vw`,
+                '--streak-h': `${streak.h}px`,
+                '--streak-opacity': streak.opacity,
+                '--streak-delay': `${streak.delay}ms`,
+              } as CSSProperties
+            }
+          />
+        ))}
+      </div>
 
       {/* Интро-занавес */}
       <AnimatePresence>
