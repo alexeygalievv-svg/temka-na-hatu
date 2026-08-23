@@ -10,8 +10,9 @@ export interface MapPin {
 }
 
 export interface MapHandle {
-  flyTo: (lat: number, lng: number, zoom?: number, duration?: number) => void;
-  fitAll: (points: Array<{ lat: number; lng: number }>, duration?: number) => void;
+  flyTo: (lat: number, lng: number, zoom?: number, duration?: number) => Promise<void>;
+  preload: (lat: number, lng: number, zoom?: number, waitMs?: number) => Promise<void>;
+  fitAll: (points: Array<{ lat: number; lng: number }>, duration?: number) => Promise<void>;
 }
 
 interface MapCanvasProps {
@@ -26,6 +27,22 @@ interface MapCanvasProps {
 /** Размеры пина — должны совпадать с CSS и iconImageOffset. */
 const PIN_W = 40;
 const PIN_H = 42;
+
+function waitForAnimation(animation: unknown, fallbackMs: number): Promise<void> {
+  const fallback = new Promise<void>((resolve) => window.setTimeout(resolve, fallbackMs));
+  if (
+    animation &&
+    typeof animation === 'object' &&
+    'then' in animation &&
+    typeof animation.then === 'function'
+  ) {
+    return Promise.race([
+      Promise.resolve(animation as PromiseLike<unknown>).then(() => undefined, () => undefined),
+      fallback,
+    ]);
+  }
+  return fallback;
+}
 
 function pinLayoutClass(ymaps: { templateLayoutFactory: { createClass: (html: string) => unknown } }) {
   return ymaps.templateLayoutFactory.createClass(`
@@ -52,8 +69,12 @@ export function MapCanvas({
   ref,
 }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const preloaderContainerRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapRef = useRef<any>(null);
+  // Невидимая вторая карта заранее загружает тайлы следующей точки в общий HTTP-кеш.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const preloaderMapRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ymapsRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -88,6 +109,22 @@ export function MapCanvas({
           },
           { suppressMapOpenBlock: true },
         );
+
+        if (preloaderContainerRef.current) {
+          preloaderMapRef.current = new ymaps.Map(
+            preloaderContainerRef.current,
+            {
+              center: [initialCenter.lat, initialCenter.lng],
+              zoom: initialZoom,
+              controls: [],
+            },
+            {
+              suppressMapOpenBlock: true,
+              yandexMapDisablePoiInteractivity: true,
+            },
+          );
+          preloaderMapRef.current.behaviors.disable('drag');
+        }
 
         map.behaviors.disable('dblClickZoom');
 
@@ -143,7 +180,10 @@ export function MapCanvas({
       cancelled = true;
       placemarksRef.current.clear();
       if (map) map.destroy();
+      preloaderMapRef.current?.destroy();
+      preloaderMapRef.current = null;
       if (containerRef.current) containerRef.current.replaceChildren();
+      if (preloaderContainerRef.current) preloaderContainerRef.current.replaceChildren();
       mapRef.current = null;
       setReady(false);
     };
@@ -205,30 +245,59 @@ export function MapCanvas({
   useImperativeHandle(
     ref,
     () => ({
-      flyTo(lat: number, lng: number, zoom = 15, duration = 1600) {
-        mapRef.current?.setCenter([lat, lng], zoom, {
+      async flyTo(lat: number, lng: number, zoom = 15, duration = 1200) {
+        const map = mapRef.current;
+        if (!map) return;
+
+        const currentZoom = Number(map.getZoom?.() ?? zoom);
+        if (Math.abs(currentZoom - zoom) > 0.15) {
+          const zoomDuration = 300;
+          const zoomAnimation = map.setZoom(zoom, {
+            duration: zoomDuration,
+            timingFunction: 'ease-in-out',
+          });
+          await waitForAnimation(zoomAnimation, zoomDuration + 80);
+        }
+
+        const panAnimation = map.panTo([lat, lng], {
           duration,
           timingFunction: 'ease-in-out',
+          flying: false,
+          checkZoomRange: true,
+          useMapMargin: true,
         });
+        await waitForAnimation(panAnimation, duration + 120);
       },
-      fitAll(points, duration = 1400) {
+      async preload(lat: number, lng: number, zoom = 15, waitMs = 450) {
+        const preloadMap = preloaderMapRef.current;
+        if (!preloadMap) {
+          await new Promise<void>((resolve) => window.setTimeout(resolve, waitMs));
+          return;
+        }
+        preloadMap.setCenter([lat, lng], zoom, { duration: 0 });
+        preloadMap.container?.fitToViewport?.();
+        await new Promise<void>((resolve) => window.setTimeout(resolve, waitMs));
+      },
+      async fitAll(points, duration = 1400) {
         const map = mapRef.current;
         const ymaps = ymapsRef.current;
         if (!map || !ymaps || points.length === 0) return;
         if (points.length === 1) {
-          map.setCenter([points[0].lat, points[0].lng], 14, {
+          const animation = map.panTo([points[0].lat, points[0].lng], {
             duration,
             timingFunction: 'ease-in-out',
           });
+          await waitForAnimation(animation, duration + 120);
           return;
         }
         const bounds = ymaps.util.bounds.fromPoints(points.map((p) => [p.lat, p.lng]));
-        map.setBounds(bounds, {
+        const animation = map.setBounds(bounds, {
           duration,
           timingFunction: 'ease-in-out',
           checkZoomRange: true,
           zoomMargin: 48,
         });
+        await waitForAnimation(animation, duration + 120);
       },
     }),
     [],
@@ -237,6 +306,7 @@ export function MapCanvas({
   return (
     <div className="map-canvas">
       <div ref={containerRef} className="map-canvas__map" />
+      <div ref={preloaderContainerRef} className="map-canvas__preloader" aria-hidden="true" />
       <div className="map-canvas__tint" aria-hidden="true" />
       {error && (
         <div className="map-canvas__error">

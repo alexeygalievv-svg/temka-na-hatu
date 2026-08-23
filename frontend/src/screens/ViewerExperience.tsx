@@ -39,6 +39,7 @@ export function ViewerExperience({
   const [visibleCount, setVisibleCount] = useState(0);
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [cameraMoving, setCameraMoving] = useState(false);
 
   useEffect(() => {
     cancelledRef.current = false;
@@ -50,22 +51,50 @@ export function ViewerExperience({
   async function startReveal() {
     setStage('reveal');
     haptic('medium');
+
+    if (points[0]) {
+      await mapRef.current?.preload(points[0].lat, points[0].lng, 15.3, 500);
+    }
+
     for (let i = 0; i < points.length; i++) {
       if (cancelledRef.current) return;
       setCurrentIndex(i);
-      // Перелёт камеры к точке, затем — появление пина
-      mapRef.current?.flyTo(points[i].lat, points[i].lng, 15.3, 1700);
-      await sleep(1850);
+
+      // Небольшая пауза стабилизирует предыдущий кадр, затем тёплая
+      // подложка маскирует догрузку тайлов во время плавного panTo.
+      await sleep(160);
+      setCameraMoving(true);
+      await sleep(220);
+      await mapRef.current?.flyTo(points[i].lat, points[i].lng, 15.3, 1200);
+      await sleep(140);
       if (cancelledRef.current) return;
+      setCameraMoving(false);
+      await sleep(320);
+      if (cancelledRef.current) return;
+
       setVisibleCount(i + 1);
       haptic('light');
-      await sleep(1250);
+
+      // Пока получатель рассматривает текущую точку, невидимая карта
+      // заранее запрашивает тайлы следующего региона в HTTP-кеш.
+      const nextPoint = points[i + 1];
+      await Promise.all([
+        sleep(1100),
+        nextPoint
+          ? mapRef.current?.preload(nextPoint.lat, nextPoint.lng, 15.3, 650)
+          : Promise.resolve(),
+      ]);
     }
     if (cancelledRef.current) return;
     setCurrentIndex(-1);
     if (points.length > 1) {
-      mapRef.current?.fitAll(points, 1500);
-      await sleep(1600);
+      await sleep(160);
+      setCameraMoving(true);
+      await sleep(220);
+      await mapRef.current?.fitAll(points, 1400);
+      await sleep(140);
+      setCameraMoving(false);
+      await sleep(320);
     }
     if (cancelledRef.current) return;
     setStage('explore');
@@ -93,6 +122,14 @@ export function ViewerExperience({
           haptic('light');
           setActiveId(id);
         }}
+      />
+
+      <motion.div
+        className="viewer__camera-fade"
+        aria-hidden="true"
+        initial={false}
+        animate={{ opacity: cameraMoving ? 0.26 : 0 }}
+        transition={{ duration: cameraMoving ? 0.22 : 0.34, ease: 'easeInOut' }}
       />
 
       {/* Интро-занавес */}

@@ -159,6 +159,16 @@ body::after {
   height: 100% !important;
 }
 
+.map-canvas__preloader {
+  position: fixed;
+  left: -10000px;
+  top: -10000px;
+  width: 360px;
+  height: 360px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .map-canvas__tint {
   position: absolute;
   inset: 0;
@@ -804,6 +814,17 @@ body::after {
 }
 
 /* ============ Экран получателя ============ */
+
+.viewer__camera-fade {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  pointer-events: none;
+  background:
+    radial-gradient(90% 70% at 50% 30%, rgba(255, 250, 241, 0.82), rgba(244, 229, 207, 0.96)),
+    var(--paper-warm);
+  will-change: opacity;
+}
 
 .viewer__intro {
   position: absolute;
