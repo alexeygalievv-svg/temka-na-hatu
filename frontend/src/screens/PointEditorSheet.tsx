@@ -1,7 +1,8 @@
-import { useRef } from 'react';
 import type { DraftPoint } from '../types';
 import { Sheet } from '../components/Sheet';
 import { Button } from '../components/Button';
+import { GalleryAsk } from '../components/GalleryAsk';
+import { useGalleryPicker } from '../lib/gallery';
 import { blurOnEnter, hideSoftKeyboard } from '../lib/keyboard';
 
 interface PointEditorSheetProps {
@@ -13,25 +14,23 @@ interface PointEditorSheetProps {
 }
 
 export function PointEditorSheet({ point, index, onChange, onDelete, onClose }: PointEditorSheetProps) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  function handleFile(file: File | undefined) {
-    if (!file || !point) return;
+  const gallery = useGalleryPicker((file) => {
+    if (!point) return;
     if (point.photoPreview) URL.revokeObjectURL(point.photoPreview);
     onChange({ photoFile: file, photoPreview: URL.createObjectURL(file) });
-  }
+  });
 
   return (
     <Sheet open={point !== null} onClose={onClose} title={`Место ${index + 1}`}>
       {point && (
         <div className="editor">
           <input
-            ref={fileInputRef}
+            ref={gallery.inputRef}
             type="file"
             accept="image/*"
             hidden
             onChange={(e) => {
-              handleFile(e.target.files?.[0]);
+              gallery.handleChange(e.target.files);
               e.target.value = '';
             }}
           />
@@ -39,7 +38,7 @@ export function PointEditorSheet({ point, index, onChange, onDelete, onClose }: 
           <button
             type="button"
             className={`editor__photo ${point.photoPreview ? 'editor__photo--filled' : ''}`}
-            onClick={() => fileInputRef.current?.click()}
+            onClick={gallery.requestPick}
           >
             {point.photoPreview ? (
               <>
@@ -70,6 +69,17 @@ export function PointEditorSheet({ point, index, onChange, onDelete, onClose }: 
           </label>
 
           <label className="editor__field">
+            <span>Дата</span>
+            <input
+              type="date"
+              value={point.happenedOn ?? ''}
+              onChange={(e) => onChange({ happenedOn: e.target.value || null })}
+              onKeyDown={blurOnEnter}
+            />
+            <span className="editor__field-hint">Необязательно — можно оставить пустой</span>
+          </label>
+
+          <label className="editor__field">
             <span>История этого места</span>
             <textarea
               value={point.description}
@@ -97,6 +107,7 @@ export function PointEditorSheet({ point, index, onChange, onDelete, onClose }: 
           </div>
         </div>
       )}
+      {gallery.asking && <GalleryAsk onAllow={gallery.allow} onDeny={gallery.deny} />}
     </Sheet>
   );
 }

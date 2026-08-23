@@ -16,21 +16,14 @@ type Route =
   | { name: 'link'; link: string }
   | { name: 'viewer'; mapId: string };
 
-const screenVariants = {
-  initial: { opacity: 0, scale: 0.985, y: 14 },
-  animate: { opacity: 1, scale: 1, y: 0 },
-  exit: { opacity: 0, scale: 1.01, y: -10 },
-};
-
 function Screen({ children }: { children: ReactNode }) {
   return (
     <motion.div
       className="screen"
-      variants={screenVariants}
-      initial="initial"
-      animate="animate"
-      exit="exit"
-      transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
     >
       {children}
     </motion.div>
@@ -100,6 +93,7 @@ export default function App() {
           title: point.title.trim() || `Место ${i + 1}`,
           description: point.description.trim(),
           photoUrl,
+          happenedOn: point.happenedOn,
           lat: point.lat,
           lng: point.lng,
           orderIndex: i,

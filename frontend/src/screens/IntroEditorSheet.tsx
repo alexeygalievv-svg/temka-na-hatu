@@ -1,7 +1,8 @@
-import { useRef } from 'react';
 import type { IntroSettings } from '../lib/intro';
 import { Sheet } from '../components/Sheet';
 import { IntroOverlay } from '../components/IntroOverlay';
+import { GalleryAsk } from '../components/GalleryAsk';
+import { useGalleryPicker } from '../lib/gallery';
 import { blurOnEnter } from '../lib/keyboard';
 
 interface IntroEditorSheetProps {
@@ -25,13 +26,10 @@ export function IntroEditorSheet({
   onIntroChange,
   onClose,
 }: IntroEditorSheetProps) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  function handleFile(file: File | undefined) {
-    if (!file) return;
+  const gallery = useGalleryPicker((file) => {
     if (intro.photoPreview?.startsWith('blob:')) URL.revokeObjectURL(intro.photoPreview);
     onIntroChange({ photoFile: file, photoPreview: URL.createObjectURL(file) });
-  }
+  });
 
   function removePhoto() {
     if (intro.photoPreview?.startsWith('blob:')) URL.revokeObjectURL(intro.photoPreview);
@@ -81,19 +79,19 @@ export function IntroEditorSheet({
         <div className="editor__field">
           <span>Фото-карточка</span>
           <input
-            ref={fileInputRef}
+            ref={gallery.inputRef}
             type="file"
             accept="image/*"
             hidden
             onChange={(e) => {
-              handleFile(e.target.files?.[0]);
+              gallery.handleChange(e.target.files);
               e.target.value = '';
             }}
           />
           <button
             type="button"
             className={`editor__photo ${intro.photoPreview ? 'editor__photo--filled' : ''}`}
-            onClick={() => fileInputRef.current?.click()}
+            onClick={gallery.requestPick}
           >
             {intro.photoPreview ? (
               <>
@@ -141,6 +139,7 @@ export function IntroEditorSheet({
           />
         </label>
       </div>
+      {gallery.asking && <GalleryAsk onAllow={gallery.allow} onDeny={gallery.deny} />}
     </Sheet>
   );
 }

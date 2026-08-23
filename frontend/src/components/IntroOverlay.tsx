@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { resolveIntroMessage } from '../lib/intro';
+import { hasPhotoUrl } from '../lib/media';
 import { Button } from './Button';
 
 interface IntroOverlayProps {
@@ -27,6 +29,13 @@ export function IntroOverlay({
   compact = false,
 }: IntroOverlayProps) {
   const meta = resolveIntroMessage(message, pointCount);
+  const [broken, setBroken] = useState(false);
+
+  useEffect(() => {
+    setBroken(false);
+  }, [photoPreview]);
+
+  const showPhoto = hasPhotoUrl(photoPreview) && !broken;
 
   return (
     <div className={`intro-overlay${compact ? ' intro-overlay--compact' : ''}`}>
@@ -56,7 +65,7 @@ export function IntroOverlay({
           от {authorName.trim()}
         </motion.span>
       )}
-      {photoPreview && (
+      {showPhoto && (
         <motion.figure
           className={`intro-photo${compact ? ' intro-photo--compact' : ''}`}
           initial={{ opacity: 0, scale: 0.86, rotate: 8, y: 18 }}
@@ -73,7 +82,12 @@ export function IntroOverlay({
             y: { delay: 0.55, duration: compact ? 5.2 : 6.2, repeat: Infinity, ease: 'easeInOut' },
           }}
         >
-          <img src={photoPreview} alt="" draggable={false} />
+          <img
+            src={photoPreview ?? ''}
+            alt=""
+            draggable={false}
+            onError={() => setBroken(true)}
+          />
         </motion.figure>
       )}
       <motion.div

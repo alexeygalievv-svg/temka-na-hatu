@@ -10,6 +10,7 @@ interface StoredPoint {
   lat: number;
   lng: number;
   photoDataUrl: string | null;
+  happenedOn: string | null;
 }
 
 export interface StoredDraft {
@@ -59,6 +60,7 @@ async function pointToStored(point: DraftPoint): Promise<StoredPoint> {
     lat: point.lat,
     lng: point.lng,
     photoDataUrl,
+    happenedOn: point.happenedOn,
   };
 }
 
@@ -74,6 +76,7 @@ function storedToPoint(stored: StoredPoint): DraftPoint {
     lng: stored.lng,
     photoFile,
     photoPreview: stored.photoDataUrl,
+    happenedOn: stored.happenedOn ?? null,
   };
 }
 
@@ -159,6 +162,7 @@ export function saveDraftDebounced(draft: {
             lat: p.lat,
             lng: p.lng,
             photoDataUrl: null as string | null,
+            happenedOn: p.happenedOn,
           }));
           localStorage.setItem(
             STORAGE_KEY,

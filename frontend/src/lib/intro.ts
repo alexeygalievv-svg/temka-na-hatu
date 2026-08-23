@@ -22,7 +22,7 @@ export function normalizeIntro(raw?: Partial<IntroSettings> | null): IntroSettin
     eyebrow: raw?.eyebrow ?? DEFAULT_INTRO.eyebrow,
     message: raw?.message ?? DEFAULT_INTRO.message,
     buttonText: raw?.buttonText ?? DEFAULT_INTRO.buttonText,
-    photoPreview: raw?.photoPreview ?? null,
+    photoPreview: raw?.photoPreview?.trim() ? raw.photoPreview : null,
     photoFile: raw?.photoFile ?? null,
   };
 }

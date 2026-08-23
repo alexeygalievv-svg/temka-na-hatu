@@ -21,6 +21,58 @@ function isMissingIntroPhoto(error: PostgrestError): boolean {
   return text.includes('intro_photo');
 }
 
+function isMissingHappenedOn(error: PostgrestError): boolean {
+  const text = `${error.message ?? ''} ${error.details ?? ''} ${error.hint ?? ''}`.toLowerCase();
+  return text.includes('happened_on');
+}
+
+function normalizeHappenedOn(raw?: string | null): string | null {
+  if (!raw) return null;
+  const match = raw.trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return match ? `${match[1]}-${match[2]}-${match[3]}` : null;
+}
+
+function serializePoint(p: {
+  id: string;
+  title: string;
+  description?: string | null;
+  photo_url?: string | null;
+  happened_on?: string | null;
+  lat: number;
+  lng: number;
+  order_index: number;
+}) {
+  return {
+    id: p.id,
+    title: p.title,
+    description: p.description ?? '',
+    photoUrl: p.photo_url ?? null,
+    happenedOn: p.happened_on ?? null,
+    lat: p.lat,
+    lng: p.lng,
+    orderIndex: p.order_index,
+  };
+}
+
+async function fetchPoints(mapId: string) {
+  const withDate = await supabase
+    .from('points')
+    .select('id, title, description, photo_url, happened_on, lat, lng, order_index')
+    .eq('map_id', mapId)
+    .order('order_index', { ascending: true });
+  if (withDate.error && isMissingHappenedOn(withDate.error)) {
+    const fallback = await supabase
+      .from('points')
+      .select('id, title, description, photo_url, lat, lng, order_index')
+      .eq('map_id', mapId)
+      .order('order_index', { ascending: true });
+    if (fallback.error) throwDbError(fallback.error, 'Не удалось загрузить точки');
+    return (fallback.data ?? []).map((p) => serializePoint({ ...p, happened_on: null }));
+  }
+  if (withDate.error) throwDbError(withDate.error, 'Не удалось загрузить точки');
+  return (withDate.data ?? []).map(serializePoint);
+}
+
 function throwDbError(error: PostgrestError, context: string): never {
   const err = new Error(`${context}: ${error.message}`) as Error & { statusCode?: number };
   err.statusCode = 500;
@@ -79,6 +131,7 @@ interface CreatePointBody {
   title: string;
   description?: string;
   photoUrl?: string;
+  happenedOn?: string | null;
   lat: number;
   lng: number;
   orderIndex: number;
@@ -185,20 +238,25 @@ export async function mapRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'title, lat and lng are required' });
     }
 
-    const { data: point, error } = await supabase
-      .from('points')
-      .insert({
-        map_id: mapId,
-        title: body.title.trim(),
-        description: body.description?.trim() || null,
-        photo_url: body.photoUrl || null,
-        lat: body.lat,
-        lng: body.lng,
-        order_index: body.orderIndex ?? 0,
-      })
-      .select('id')
-      .single();
-    if (error) throw error;
+    const row = {
+      map_id: mapId,
+      title: body.title.trim(),
+      description: body.description?.trim() || null,
+      photo_url: body.photoUrl || null,
+      happened_on: normalizeHappenedOn(body.happenedOn),
+      lat: body.lat,
+      lng: body.lng,
+      order_index: body.orderIndex ?? 0,
+    };
+    const { data: point, error } = await supabase.from('points').insert(row).select('id').single();
+    if (error && isMissingHappenedOn(error)) {
+      const { happened_on: _unused, ...legacyRow } = row;
+      void _unused;
+      const fallback = await supabase.from('points').insert(legacyRow).select('id').single();
+      if (fallback.error) throw fallback.error;
+      return reply.code(201).send({ id: fallback.data.id });
+    }
+    if (error || !point) throw error ?? new Error('Не удалось сохранить место');
 
     return reply.code(201).send({ id: point.id });
   });
@@ -255,12 +313,6 @@ export async function mapRoutes(app: FastifyInstance) {
             throwDbError(noPhotoError, 'Не удалось загрузить карту');
           }
         } else if (noPhotoMap) {
-          const { data: points, error: pointsError } = await supabase
-            .from('points')
-            .select('id, title, description, photo_url, lat, lng, order_index')
-            .eq('map_id', mapId)
-            .order('order_index', { ascending: true });
-          if (pointsError) throwDbError(pointsError, 'Не удалось загрузить точки');
           return {
             id: noPhotoMap.id,
             title: noPhotoMap.title,
@@ -272,15 +324,7 @@ export async function mapRoutes(app: FastifyInstance) {
               photoPreview: null,
               photoFile: null,
             },
-            points: (points ?? []).map((p) => ({
-              id: p.id,
-              title: p.title,
-              description: p.description ?? '',
-              photoUrl: p.photo_url ?? null,
-              lat: p.lat,
-              lng: p.lng,
-              orderIndex: p.order_index,
-            })),
+            points: await fetchPoints(mapId),
           };
         }
       }
@@ -292,12 +336,6 @@ export async function mapRoutes(app: FastifyInstance) {
           .maybeSingle();
         if (legacyError) throwDbError(legacyError, 'Не удалось загрузить карту');
         if (!legacyMap) return reply.code(404).send({ error: 'Map not found' });
-        const { data: points, error: pointsError } = await supabase
-          .from('points')
-          .select('id, title, description, photo_url, lat, lng, order_index')
-          .eq('map_id', mapId)
-          .order('order_index', { ascending: true });
-        if (pointsError) throwDbError(pointsError, 'Не удалось загрузить точки');
         return {
           id: legacyMap.id,
           title: legacyMap.title,
@@ -309,27 +347,12 @@ export async function mapRoutes(app: FastifyInstance) {
             photoPreview: null,
             photoFile: null,
           },
-          points: (points ?? []).map((p) => ({
-            id: p.id,
-            title: p.title,
-            description: p.description ?? '',
-            photoUrl: p.photo_url ?? null,
-            lat: p.lat,
-            lng: p.lng,
-            orderIndex: p.order_index,
-          })),
+          points: await fetchPoints(mapId),
         };
       }
       throwDbError(mapError, 'Не удалось загрузить карту');
     }
     if (!map) return reply.code(404).send({ error: 'Map not found' });
-
-    const { data: points, error: pointsError } = await supabase
-      .from('points')
-      .select('id, title, description, photo_url, lat, lng, order_index')
-      .eq('map_id', mapId)
-      .order('order_index', { ascending: true });
-    if (pointsError) throw pointsError;
 
     return {
       id: map.id,
@@ -342,15 +365,7 @@ export async function mapRoutes(app: FastifyInstance) {
         photoPreview: map.intro_photo_url ?? null,
         photoFile: null,
       },
-      points: (points ?? []).map((p) => ({
-        id: p.id,
-        title: p.title,
-        description: p.description ?? '',
-        photoUrl: p.photo_url ?? null,
-        lat: p.lat,
-        lng: p.lng,
-        orderIndex: p.order_index,
-      })),
+      points: await fetchPoints(mapId),
     };
   });
 }

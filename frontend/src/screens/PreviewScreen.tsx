@@ -19,6 +19,7 @@ export function PreviewScreen({ title, authorName, intro, points, onBack }: Prev
         title: p.title.trim() || `Место ${i + 1}`,
         description: p.description.trim(),
         photoUrl: p.photoPreview,
+        happenedOn: p.happenedOn ?? null,
         lat: p.lat,
         lng: p.lng,
       })),

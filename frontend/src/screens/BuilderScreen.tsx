@@ -86,6 +86,7 @@ export function BuilderScreen({
       description: '',
       photoFile: null,
       photoPreview: null,
+      happenedOn: null,
       lat: coords.lat,
       lng: coords.lng,
     };
@@ -120,7 +121,13 @@ export function BuilderScreen({
   }
 
   return (
-    <div className="builder" onPointerDown={hideSoftKeyboard}>
+    <div
+      className="builder"
+      onPointerDown={(event) => {
+        if ((event.target as HTMLElement).closest('.map-canvas')) return;
+        hideSoftKeyboard(event);
+      }}
+    >
       <MapCanvas
         ref={mapRef}
         initialCenter={points[0] ?? MOSCOW}

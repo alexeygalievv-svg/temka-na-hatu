@@ -9,6 +9,8 @@ export interface MemoryPoint {
   title: string;
   description: string;
   photoUrl: string | null;
+  /** Дата воспоминания, YYYY-MM-DD. Необязательная. */
+  happenedOn: string | null;
   lat: number;
   lng: number;
 }
@@ -21,6 +23,8 @@ export interface DraftPoint {
   photoFile: File | null;
   /** Object URL для мгновенного предпросмотра. */
   photoPreview: string | null;
+  /** Дата воспоминания, YYYY-MM-DD. Необязательная. */
+  happenedOn: string | null;
   lat: number;
   lng: number;
 }

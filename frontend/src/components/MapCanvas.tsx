@@ -14,6 +14,8 @@ export interface MapHandle {
   /** Прогревает тайлы по маршруту камеры, пока карта ещё стоит. */
   preloadRoute: (lat: number, lng: number, zoom?: number) => Promise<void>;
   flyTo: (lat: number, lng: number, zoom?: number, duration?: number) => Promise<void>;
+  /** Прерывает текущий перелёт камеры, чтобы можно было сразу перейти к обзору. */
+  cancelFlight: () => void;
   fitAll: (points: Array<{ lat: number; lng: number }>, duration?: number) => void;
 }
 
@@ -188,7 +190,9 @@ function logTile(kind: string, extra: Record<string, unknown> = {}) {
   };
   w.__mapTileLog!.push(entry);
   if (w.__mapTileLog!.length > 500) w.__mapTileLog!.splice(0, 120);
-  console.log('[ymaps-tiles]', kind, extra);
+  if (flight || kind.startsWith('FLY_') || kind.startsWith('diag.')) {
+    console.log('[ymaps-tiles]', kind, extra);
+  }
 }
 
 function bump(key: keyof NonNullable<ReturnType<typeof tileWindow>['__mapTileSummary']>) {
@@ -557,6 +561,7 @@ export function MapCanvas({
   /** URL тайлов, которые уже скачали — не гоняем сеть повторно. */
   const preloadedTilesRef = useRef<Set<string>>(new Set());
   const readyWaitersRef = useRef<Set<() => void>>(new Set());
+  const flightGenRef = useRef(0);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -583,11 +588,22 @@ export function MapCanvas({
             center: [initialCenter.lat, initialCenter.lng],
             zoom: initialZoom,
             controls: [],
+            behaviors: ['drag', 'multiTouch', 'scrollZoom'],
           },
-          { suppressMapOpenBlock: true, maxAnimationZoomDifference: 16 },
+          {
+            suppressMapOpenBlock: true,
+            maxAnimationZoomDifference: 16,
+            yandexMapDisablePoiInteractivity: true,
+            autoFitToViewport: 'always',
+          },
         );
 
         map.behaviors.disable('dblClickZoom');
+        try {
+          map.behaviors.get('drag')?.options.set({ inertia: true });
+        } catch {
+          /* штатная инерция и так включена */
+        }
 
         const DOUBLE_TAP_MS = 320;
         const DOUBLE_TAP_PX = 28;
@@ -869,10 +885,21 @@ export function MapCanvas({
           /* предзагрузка не должна ломать сценарий */
         }
       },
+      cancelFlight() {
+        flightGenRef.current += 1;
+        const map = mapRef.current;
+        try {
+          map?.action?.getCurrent?.()?.stop?.();
+        } catch {
+          /* карта могла уже остановиться */
+        }
+      },
       async flyTo(lat: number, lng: number, zoom = 15, duration = 1600) {
         const map = mapRef.current;
         const ymaps = ymapsRef.current;
         if (!map) return;
+        const flightGen = ++flightGenRef.current;
+        const stillFlying = () => flightGen === flightGenRef.current;
 
         const from = (map.getCenter?.() as [number, number] | undefined) ?? [lat, lng];
         const fromZoom = Number(map.getZoom?.() ?? zoom);
@@ -926,6 +953,7 @@ export function MapCanvas({
               }),
               animDuration,
             );
+            if (!stillFlying()) return;
             await waitForVisibleTiles(map, FIRST_TILES_TIMEOUT_MS);
             return;
           }
@@ -946,7 +974,9 @@ export function MapCanvas({
             }),
             outMs,
           );
+          if (!stillFlying()) return;
           await waitForVisibleTiles(map, 8000);
+          if (!stillFlying()) return;
           logTile('FLY_OUT_READY', { zoom: map.getZoom?.(), center: map.getCenter?.() });
 
           logTile('FLY_IN', { dest, zoom: targetZoom, inMs });
@@ -957,6 +987,7 @@ export function MapCanvas({
             }),
             inMs,
           );
+          if (!stillFlying()) return;
           await waitForVisibleTiles(map, FIRST_TILES_TIMEOUT_MS);
         } finally {
           logTile('FLY_END', {

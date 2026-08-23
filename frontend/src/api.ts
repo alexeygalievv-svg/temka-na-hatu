@@ -66,6 +66,7 @@ export function addPoint(
     title: string;
     description: string;
     photoUrl: string | null;
+    happenedOn?: string | null;
     lat: number;
     lng: number;
     orderIndex: number;

@@ -6,8 +6,10 @@ import { MapCanvas, type MapHandle } from '../components/MapCanvas';
 import { MemoryCard } from '../components/MemoryCard';
 import { Button } from '../components/Button';
 import { IntroOverlay } from '../components/IntroOverlay';
+import { PlaceDate } from '../components/PlaceDate';
 
 type Stage = 'intro' | 'reveal' | 'explore';
+type HintPhase = 'idle' | 'center' | 'dock';
 
 interface ViewerExperienceProps {
   title: string;
@@ -39,6 +41,7 @@ export function ViewerExperience({
   const [visibleCount, setVisibleCount] = useState(0);
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [hintPhase, setHintPhase] = useState<HintPhase>('idle');
 
   useEffect(() => {
     cancelledRef.current = false;
@@ -46,6 +49,32 @@ export function ViewerExperience({
       cancelledRef.current = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (stage !== 'explore') {
+      setHintPhase('idle');
+      return;
+    }
+    const showCenter = window.setTimeout(() => setHintPhase('center'), 400);
+    const showDock = window.setTimeout(() => setHintPhase('dock'), 3200);
+    return () => {
+      window.clearTimeout(showCenter);
+      window.clearTimeout(showDock);
+    };
+  }, [stage]);
+
+  async function skipReveal() {
+    cancelledRef.current = true;
+    haptic('soft');
+    await mapRef.current?.waitUntilReady();
+    mapRef.current?.cancelFlight();
+    setVisibleCount(points.length);
+    setCurrentIndex(-1);
+    setStage('explore');
+    if (points.length > 0) {
+      mapRef.current?.fitAll(points, 700);
+    }
+  }
 
   async function startReveal() {
     // На холодном устройстве SDK и первый слой карты могут загружаться дольше
@@ -116,6 +145,7 @@ export function ViewerExperience({
         onPinClick={(id) => {
           if (stage !== 'explore') return;
           haptic('light');
+          setHintPhase('dock');
           setActiveId(id);
         }}
       />
@@ -138,9 +168,20 @@ export function ViewerExperience({
               pointCount={points.length}
               onOpen={startReveal}
             />
+            {onExit && (
+              <button type="button" className="viewer__skip" onClick={() => void skipReveal()}>
+                Пропустить
+              </button>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
+
+      {stage === 'reveal' && (
+        <button type="button" className="viewer__skip" onClick={() => void skipReveal()}>
+          Пропустить
+        </button>
+      )}
 
       {/* Подпись текущей точки во время «путешествия» */}
       <AnimatePresence mode="wait">
@@ -154,8 +195,11 @@ export function ViewerExperience({
             transition={{ type: 'spring', stiffness: 300, damping: 28 }}
           >
             <span className="viewer__caption-num">{currentIndex + 1}</span>
-            <span className="viewer__caption-title">
-              {points[currentIndex].title || `Место ${currentIndex + 1}`}
+            <span className="viewer__caption-copy">
+              <span className="viewer__caption-title">
+                {points[currentIndex].title || `Место ${currentIndex + 1}`}
+              </span>
+              <PlaceDate value={points[currentIndex].happenedOn} className="place-date--caption" />
             </span>
           </motion.div>
         )}
@@ -184,13 +228,32 @@ export function ViewerExperience({
       </AnimatePresence>
 
       <AnimatePresence>
-        {stage === 'explore' && !activeId && (
+        {stage === 'explore' && hintPhase === 'center' && !activeId && (
+          <motion.div
+            className="viewer__nudge"
+            initial={{ opacity: 0, scale: 0.86, y: 18 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.94, y: -10 }}
+            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <span className="viewer__nudge-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M12 21s-6.4-4.35-8.6-8.1C1.7 10.2 2.4 6.8 5.2 5.6c1.8-.8 3.7-.2 4.8 1.3C11.1 5.4 13 4.8 14.8 5.6c2.8 1.2 3.5 4.6 1.8 7.3C18.4 16.65 12 21 12 21Z" />
+              </svg>
+            </span>
+            <p>Нажимайте на точки, чтобы открыть воспоминания</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {stage === 'explore' && hintPhase === 'dock' && !activeId && (
           <motion.div
             className="viewer__explore-hint"
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 16 }}
-            transition={{ delay: 0.4, duration: 0.5 }}
+            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
           >
             Нажимайте на точки, чтобы открыть воспоминания
           </motion.div>

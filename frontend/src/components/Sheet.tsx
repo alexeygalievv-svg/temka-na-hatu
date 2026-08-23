@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useDragControls } from 'framer-motion';
 import { hideSoftKeyboard } from '../lib/keyboard';
 
 interface SheetProps {
@@ -9,8 +9,10 @@ interface SheetProps {
   children: ReactNode;
 }
 
-/** Нижняя панель: пружинный въезд, закрытие свайпом вниз или по фону. */
+/** Нижняя панель: свайп вниз только за ручку, содержимое свободно скроллится. */
 export function Sheet({ open, onClose, title, children }: SheetProps) {
+  const dragControls = useDragControls();
+
   return (
     <AnimatePresence>
       {open && (
@@ -31,16 +33,25 @@ export function Sheet({ open, onClose, title, children }: SheetProps) {
             exit={{ y: '105%' }}
             transition={{ type: 'spring', stiffness: 320, damping: 34 }}
             drag="y"
+            dragListener={false}
+            dragControls={dragControls}
             dragConstraints={{ top: 0, bottom: 0 }}
             dragElastic={{ top: 0, bottom: 0.5 }}
-            onPointerDown={hideSoftKeyboard}
             onDragEnd={(_, info) => {
               if (info.offset.y > 90 || info.velocity.y > 500) onClose();
             }}
           >
-            <div className="sheet__grip" aria-hidden="true" />
-            {title && <h3 className="sheet__title">{title}</h3>}
-            {children}
+            <div
+              className="sheet__handle"
+              onPointerDown={(event) => {
+                hideSoftKeyboard();
+                dragControls.start(event);
+              }}
+            >
+              <div className="sheet__grip" aria-hidden="true" />
+              {title && <h3 className="sheet__title">{title}</h3>}
+            </div>
+            <div className="sheet__body">{children}</div>
           </motion.div>
         </>
       )}
