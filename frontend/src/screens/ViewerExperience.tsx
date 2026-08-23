@@ -21,11 +21,6 @@ interface ViewerExperienceProps {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** Та же кривая, что у камеры, чтобы подложка не «щёлкала» на фоне плавного пана. */
-const CAMERA_EASE = [0.32, 0, 0.22, 1] as const;
-const FADE_IN_MS = 260;
-const FADE_OUT_MS = 420;
-
 /**
  * Экран получателя: интро → анимированное «путешествие» камеры по точкам
  * с поочерёдным появлением пинов → свободное исследование карты.
@@ -44,7 +39,7 @@ export function ViewerExperience({
   const [visibleCount, setVisibleCount] = useState(0);
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [cameraMoving, setCameraMoving] = useState(false);
+  const [cameraShaking, setCameraShaking] = useState(false);
 
   useEffect(() => {
     cancelledRef.current = false;
@@ -65,44 +60,33 @@ export function ViewerExperience({
       if (cancelledRef.current) return;
       setCurrentIndex(i);
 
-      // Подложку доводим до конца ДО старта камеры, а параллельно грузим
-      // тайлы точки назначения — камера в это время неподвижна, конфликтов нет.
-      setCameraMoving(true);
-      await Promise.all([
-        sleep(FADE_IN_MS + 60),
-        mapRef.current?.preloadArea(points[i].lat, points[i].lng, 15.3) ?? Promise.resolve(),
-      ]);
-      if (cancelledRef.current) return;
-
-      await mapRef.current?.flyTo(points[i].lat, points[i].lng, 15.3, 1200);
-      if (cancelledRef.current) return;
-
-      // Держим подложку ещё немного — страховка, если тайлы догружаются.
+      // «Встряхивание камеры»: старая карта остаётся на экране, но быстро
+      // размывается и дрожит. Центр меняется на пике эффекта.
+      setCameraShaking(true);
       await sleep(180);
-      setCameraMoving(false);
-      await sleep(FADE_OUT_MS);
+      if (cancelledRef.current) return;
+
+      await mapRef.current?.jumpTo(points[i].lat, points[i].lng, 15.3, 380);
+      if (cancelledRef.current) return;
+
+      await sleep(220);
+      setCameraShaking(false);
+      await sleep(260);
       if (cancelledRef.current) return;
 
       setVisibleCount(i + 1);
       haptic('light');
-
-      // Пока получатель смотрит точку, заранее греем тайлы следующей.
-      const nextPoint = points[i + 1];
-      await Promise.all([
-        sleep(1000),
-        nextPoint
-          ? mapRef.current?.preloadArea(nextPoint.lat, nextPoint.lng, 15.3) ?? Promise.resolve()
-          : Promise.resolve(),
-      ]);
+      await sleep(1000);
     }
     if (cancelledRef.current) return;
     setCurrentIndex(-1);
     if (points.length > 1) {
-      setCameraMoving(true);
-      await sleep(FADE_IN_MS + 60);
-      await mapRef.current?.fitAll(points, 1400);
-      setCameraMoving(false);
-      await sleep(FADE_OUT_MS);
+      setCameraShaking(true);
+      await sleep(180);
+      await mapRef.current?.fitAll(points, 650);
+      await sleep(180);
+      setCameraShaking(false);
+      await sleep(260);
     }
     if (cancelledRef.current) return;
     setStage('explore');
@@ -127,7 +111,7 @@ export function ViewerExperience({
   );
 
   return (
-    <div className="viewer">
+    <div className={`viewer${cameraShaking ? ' viewer--camera-shaking' : ''}`}>
       <MapCanvas
         ref={mapRef}
         initialCenter={points[0] ?? { lat: 55.7512, lng: 37.6184 }}
@@ -137,17 +121,6 @@ export function ViewerExperience({
           if (stage !== 'explore') return;
           haptic('light');
           setActiveId(id);
-        }}
-      />
-
-      <motion.div
-        className="viewer__camera-fade"
-        aria-hidden="true"
-        initial={false}
-        animate={{ opacity: cameraMoving ? 0.52 : 0 }}
-        transition={{
-          duration: (cameraMoving ? FADE_IN_MS : FADE_OUT_MS) / 1000,
-          ease: CAMERA_EASE,
         }}
       />
 
