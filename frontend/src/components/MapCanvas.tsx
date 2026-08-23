@@ -12,6 +12,7 @@ export interface MapPin {
 export interface MapHandle {
   waitUntilReady: () => Promise<void>;
   flyTo: (lat: number, lng: number, zoom?: number, duration?: number) => void;
+  whipTo: (lat: number, lng: number, zoom?: number, duration?: number) => Promise<void>;
   fitAll: (points: Array<{ lat: number; lng: number }>, duration?: number) => void;
 }
 
@@ -27,6 +28,24 @@ interface MapCanvasProps {
 /** Размеры пина — должны совпадать с CSS и iconImageOffset. */
 const PIN_W = 40;
 const PIN_H = 42;
+
+/** Whip pan: короткий разгон и ощутимое торможение. */
+const WHIP_EASE = 'cubic-bezier(0.62, 0.02, 0.18, 1)';
+
+function waitForAnimation(animation: unknown, minMs: number): Promise<void> {
+  const minWait = new Promise<void>((resolve) => window.setTimeout(resolve, minMs));
+  const anim =
+    animation &&
+    typeof animation === 'object' &&
+    'then' in animation &&
+    typeof (animation as { then?: unknown }).then === 'function'
+      ? Promise.resolve(animation as PromiseLike<unknown>).then(
+          () => undefined,
+          () => undefined,
+        )
+      : Promise.resolve();
+  return Promise.all([minWait, anim]).then(() => undefined);
+}
 
 function pinLayoutClass(ymaps: { templateLayoutFactory: { createClass: (html: string) => unknown } }) {
   return ymaps.templateLayoutFactory.createClass(`
@@ -237,6 +256,22 @@ export function MapCanvas({
           duration,
           timingFunction: 'ease-in-out',
         });
+      },
+      async whipTo(lat: number, lng: number, zoom = 15, duration = 1200) {
+        const map = mapRef.current;
+        if (!map) return;
+        const safeDuration = Math.max(900, Math.min(duration, 3500));
+        const currentZoom = Number(map.getZoom?.() ?? zoom);
+        if (Math.abs(currentZoom - zoom) > 0.4) {
+          map.setZoom(zoom, { duration: 0 });
+        }
+        const animation = map.panTo([[lat, lng]], {
+          duration: safeDuration,
+          flying: true,
+          safe: false,
+          timingFunction: WHIP_EASE,
+        });
+        await waitForAnimation(animation, safeDuration + 40);
       },
       fitAll(points, duration = 1400) {
         const map = mapRef.current;
