@@ -52,38 +52,22 @@ export function ViewerExperience({
     setStage('reveal');
     haptic('medium');
 
-    if (points[0]) {
-      await mapRef.current?.preload(points[0].lat, points[0].lng, 15.3, 500);
-    }
-
     for (let i = 0; i < points.length; i++) {
       if (cancelledRef.current) return;
       setCurrentIndex(i);
 
-      // Небольшая пауза стабилизирует предыдущий кадр, затем тёплая
-      // подложка маскирует догрузку тайлов во время плавного panTo.
-      await sleep(160);
+      // Пауза, чтобы предыдущий кадр карты стабилизировался — без сдвига центра.
+      await sleep(180);
       setCameraMoving(true);
-      await sleep(220);
       await mapRef.current?.flyTo(points[i].lat, points[i].lng, 15.3, 1200);
-      await sleep(140);
       if (cancelledRef.current) return;
       setCameraMoving(false);
-      await sleep(320);
+      await sleep(280);
       if (cancelledRef.current) return;
 
       setVisibleCount(i + 1);
       haptic('light');
-
-      // Пока получатель рассматривает текущую точку, невидимая карта
-      // заранее запрашивает тайлы следующего региона в HTTP-кеш.
-      const nextPoint = points[i + 1];
-      await Promise.all([
-        sleep(1100),
-        nextPoint
-          ? mapRef.current?.preload(nextPoint.lat, nextPoint.lng, 15.3, 650)
-          : Promise.resolve(),
-      ]);
+      await sleep(1100);
     }
     if (cancelledRef.current) return;
     setCurrentIndex(-1);

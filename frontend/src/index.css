@@ -159,16 +159,6 @@ body::after {
   height: 100% !important;
 }
 
-.map-canvas__preloader {
-  position: fixed;
-  left: -10000px;
-  top: -10000px;
-  width: 360px;
-  height: 360px;
-  opacity: 0;
-  pointer-events: none;
-}
-
 .map-canvas__tint {
   position: absolute;
   inset: 0;
