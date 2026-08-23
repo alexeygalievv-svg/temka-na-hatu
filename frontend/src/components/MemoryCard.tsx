@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from 'react';
 import { AnimatePresence, motion, useDragControls } from 'framer-motion';
 import type { MemoryPoint } from '../types';
 import { hasPhotoUrl } from '../lib/media';
@@ -10,10 +11,63 @@ interface MemoryCardProps {
   onClose: () => void;
 }
 
+const COMPACT_RATIO = 0.78;
+const EXPANDED_RATIO = 0.94;
+
+/** Поднимает карточку выше, если описание не помещается в компактную высоту. */
+function fitMemoryCardHeight(card: HTMLElement | null) {
+  if (!card) return;
+  card.style.maxHeight = '';
+
+  const viewport = window.visualViewport?.height ?? window.innerHeight;
+  const compactCap = Math.round(viewport * COMPACT_RATIO);
+  const expandedCap = Math.round(viewport * EXPANDED_RATIO);
+
+  card.style.maxHeight = 'none';
+  const naturalHeight = card.offsetHeight;
+  card.style.maxHeight = '';
+
+  if (naturalHeight > compactCap + 6) {
+    card.style.maxHeight = `${Math.min(naturalHeight, expandedCap)}px`;
+  }
+}
+
 /** Карточка воспоминания: пружинный подъём, фото-«полароид», свайп вниз для закрытия. */
 export function MemoryCard({ point, index, total, onClose }: MemoryCardProps) {
   const dragControls = useDragControls();
+  const cardRef = useRef<HTMLElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const showPhoto = hasPhotoUrl(point?.photoUrl);
+
+  useLayoutEffect(() => {
+    if (!point) return;
+
+    const card = cardRef.current;
+    const fit = () => fitMemoryCardHeight(card);
+
+    fit();
+    const frame = window.requestAnimationFrame(fit);
+
+    const body = bodyRef.current;
+    const observer = body ? new ResizeObserver(fit) : null;
+    observer?.observe(body);
+
+    const imgs = body?.querySelectorAll('img') ?? [];
+    imgs.forEach((img) => {
+      if (!img.complete) img.addEventListener('load', fit, { once: true });
+    });
+
+    window.visualViewport?.addEventListener('resize', fit);
+    window.addEventListener('resize', fit);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer?.disconnect();
+      window.visualViewport?.removeEventListener('resize', fit);
+      window.removeEventListener('resize', fit);
+      if (card) card.style.maxHeight = '';
+    };
+  }, [point]);
 
   return (
     <AnimatePresence>
@@ -29,6 +83,7 @@ export function MemoryCard({ point, index, total, onClose }: MemoryCardProps) {
           />
           <motion.article
             key={point.id}
+            ref={cardRef}
             className="memory-card"
             initial={{ y: '108%', scale: 0.92, opacity: 0.6 }}
             animate={{ y: 0, scale: 1, opacity: 1 }}
@@ -53,7 +108,7 @@ export function MemoryCard({ point, index, total, onClose }: MemoryCardProps) {
               </span>
             </div>
 
-            <div className="memory-card__body">
+            <div ref={bodyRef} className="memory-card__body">
               {showPhoto && (
                 <motion.figure
                   className="memory-card__photo"

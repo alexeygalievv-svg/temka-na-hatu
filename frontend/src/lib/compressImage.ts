@@ -1,14 +1,21 @@
 const MAX_EDGE = 1600;
 const QUALITY = 0.82;
+const DRAFT_EDGE = 720;
+const DRAFT_QUALITY = 0.68;
 
-function drawToJpeg(source: CanvasImageSource, width: number, height: number): Promise<Blob | null> {
+function drawToJpeg(
+  source: CanvasImageSource,
+  width: number,
+  height: number,
+  quality = QUALITY,
+): Promise<Blob | null> {
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext('2d');
   if (!ctx) return Promise.resolve(null);
   ctx.drawImage(source, 0, 0, width, height);
-  return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', QUALITY));
+  return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
 }
 
 function loadImage(file: File): Promise<HTMLImageElement> {
@@ -28,7 +35,11 @@ function loadImage(file: File): Promise<HTMLImageElement> {
 }
 
 /** Сжимает снимок до JPEG, чтобы он уезжал в базу и не ронял телефон. */
-export async function compressImage(file: File): Promise<File> {
+export async function compressImage(
+  file: File,
+  maxEdge = MAX_EDGE,
+  quality = QUALITY,
+): Promise<File> {
   try {
     let width = 0;
     let height = 0;
@@ -36,17 +47,17 @@ export async function compressImage(file: File): Promise<File> {
 
     try {
       const bitmap = await createImageBitmap(file);
-      const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
+      const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
       width = Math.max(1, Math.round(bitmap.width * scale));
       height = Math.max(1, Math.round(bitmap.height * scale));
-      blob = await drawToJpeg(bitmap, width, height);
+      blob = await drawToJpeg(bitmap, width, height, quality);
       bitmap.close();
     } catch {
       const image = await loadImage(file);
-      const scale = Math.min(1, MAX_EDGE / Math.max(image.naturalWidth, image.naturalHeight));
+      const scale = Math.min(1, maxEdge / Math.max(image.naturalWidth, image.naturalHeight));
       width = Math.max(1, Math.round(image.naturalWidth * scale));
       height = Math.max(1, Math.round(image.naturalHeight * scale));
-      blob = await drawToJpeg(image, width, height);
+      blob = await drawToJpeg(image, width, height, quality);
     }
 
     if (!blob) return file;
@@ -54,6 +65,11 @@ export async function compressImage(file: File): Promise<File> {
   } catch {
     return file;
   }
+}
+
+/** Более лёгкий JPEG для localStorage, чтобы черновик не вытеснял фото. */
+export function compressImageForDraft(file: File): Promise<File> {
+  return compressImage(file, DRAFT_EDGE, DRAFT_QUALITY);
 }
 
 function fileFromDataUrl(dataUrl: string, name: string): File | null {

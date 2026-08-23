@@ -5,7 +5,7 @@ import { DEFAULT_INTRO } from './types';
 import { getStartParam, getUserName, haptic } from './telegram';
 import { addPoint, createMap, uploadPhoto } from './api';
 import { compressImage, fileFromPreview, fileToDataUrl } from './lib/compressImage';
-import { clearDraft, loadDraft, restorePoints, saveDraftDebounced } from './lib/draftStorage';
+import { clearDraft, loadDraft, restorePoints, saveDraftDebounced, saveDraftNow } from './lib/draftStorage';
 import { BuilderScreen } from './screens/BuilderScreen';
 import { PreviewScreen } from './screens/PreviewScreen';
 import { ViewerScreen } from './screens/ViewerScreen';
@@ -109,22 +109,26 @@ export default function App() {
         introButton: draft.intro.buttonText,
         introPhotoDataUrl,
       };
-      let created: { id: string; link: string };
+      let created: { id: string; link: string; introPhotoUrl?: string | null };
       try {
         created = await createMap(mapPayload);
       } catch {
         created = await createMap({ ...mapPayload, introPhotoDataUrl: undefined });
       }
       const { id, link } = created;
-      for (let i = 0; i < draft.points.length; i++) {
-        const point = draft.points[i];
+      const createdIntroUrl = created.introPhotoUrl ?? null;
+      const publishedPoints = [...draft.points];
+      for (let i = 0; i < publishedPoints.length; i++) {
+        const point = publishedPoints[i];
         let photoUrl: string | null = null;
         const pointFile = await fileFromPreview(point.photoFile, point.photoPreview, `photo-${i}.jpg`);
         if (pointFile) {
-          setPublishing({ step: 'photo', index: i, total: draft.points.length });
+          setPublishing({ step: 'photo', index: i, total: publishedPoints.length });
           photoUrl = (await uploadPhoto(id, await compressImage(pointFile))).url;
+        } else if (point.photoPreview?.startsWith('http')) {
+          photoUrl = point.photoPreview;
         }
-        setPublishing({ step: 'point', index: i, total: draft.points.length });
+        setPublishing({ step: 'point', index: i, total: publishedPoints.length });
         await addPoint(id, {
           title: point.title.trim() || `Место ${i + 1}`,
           description: point.description.trim(),
@@ -134,7 +138,31 @@ export default function App() {
           lng: point.lng,
           orderIndex: i,
         });
+        if (photoUrl && photoUrl !== point.photoPreview) {
+          if (point.photoPreview?.startsWith('blob:')) URL.revokeObjectURL(point.photoPreview);
+          publishedPoints[i] = { ...point, photoFile: null, photoPreview: photoUrl };
+        }
       }
+      if (createdIntroUrl && draft.intro.photoPreview?.startsWith('blob:')) {
+        URL.revokeObjectURL(draft.intro.photoPreview);
+      }
+      const nextIntro = createdIntroUrl
+        ? { ...draft.intro, photoFile: null, photoPreview: createdIntroUrl }
+        : draft.intro;
+      setIntro(nextIntro);
+      setPoints(publishedPoints);
+      draftRef.current = {
+        mapTitle: draft.mapTitle,
+        authorName: draft.authorName,
+        intro: nextIntro,
+        points: publishedPoints,
+      };
+      await saveDraftNow({
+        mapTitle: draft.mapTitle,
+        authorName: draft.authorName,
+        intro: nextIntro,
+        points: publishedPoints,
+      });
       haptic('medium');
       setRoute({ name: 'link', link });
     } catch (error) {

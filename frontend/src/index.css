@@ -75,15 +75,30 @@ body.map-gesturing::after {
   display: none;
 }
 
+body.map-gesturing .map-pin {
+  visibility: hidden;
+}
+
 @media (pointer: coarse) {
-  body.map-gesturing .builder__header,
-  body.map-gesturing .btn--ghost {
+  body::after {
+    display: none;
+  }
+
+  .builder__header,
+  .btn--ghost,
+  .viewer__nudge,
+  .viewer__caption,
+  .viewer__explore-hint {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
 
-  body.map-gesturing .map-canvas__tint {
+  .map-canvas__tint {
     opacity: 0;
+  }
+
+  .map-pin__shadow {
+    filter: none;
   }
 }
 
@@ -1321,6 +1336,7 @@ body.map-gesturing::after {
   padding: 8px 0 calc(18px + var(--safe-bottom));
   max-height: 78%;
   overflow: hidden;
+  transition: max-height 0.34s var(--ease-out);
 }
 
 .memory-card__handle {

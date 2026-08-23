@@ -309,11 +309,7 @@ function attachTileDiagnostics(map: any, container: HTMLElement | null): () => v
   } catch {
     logTile('map.tile-events-missing', { note: 'Map не бросает tileload/tileerror' });
   }
-  const onActionBegin = () => document.body.classList.add('map-gesturing');
-  const onActionEnd = () => document.body.classList.remove('map-gesturing');
   map.events.add('sizechange', onSizeChange);
-  map.events.add('actionbegin', onActionBegin);
-  map.events.add('actionend', onActionEnd);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const boundLayers = new Set<any>();
@@ -390,13 +386,55 @@ function attachTileDiagnostics(map: any, container: HTMLElement | null): () => v
       map.events.remove('tileload', onMapTileload);
       map.events.remove('tileerror', onMapTileerror);
       map.events.remove('sizechange', onSizeChange);
-      map.events.remove('actionbegin', onActionBegin);
-      map.events.remove('actionend', onActionEnd);
-      document.body.classList.remove('map-gesturing');
     } catch {
       /* destroy */
     }
     ro?.disconnect();
+  };
+}
+
+function setMapGesturing(map: { geoObjects?: { options?: { set?: (key: string, value: boolean) => void } } }, on: boolean) {
+  document.body.classList.toggle('map-gesturing', on);
+  try {
+    map.geoObjects?.options?.set?.('visible', !on);
+  } catch {
+    /* пины останутся на месте */
+  }
+}
+
+/** На телефоне сразу гасим оверлеи и пины — иначе щипок рвётся. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function attachGestureHints(map: any, container: HTMLElement | null): () => void {
+  const onBegin = () => setMapGesturing(map, true);
+  const onEnd = () => setMapGesturing(map, false);
+  const onTouchStart = (event: TouchEvent) => {
+    if (event.touches.length >= 2) onBegin();
+  };
+  const onTouchEnd = (event: TouchEvent) => {
+    if (event.touches.length < 2) onEnd();
+  };
+
+  map.events.add('actionbegin', onBegin);
+  map.events.add('actionend', onEnd);
+  map.events.add('multitouchstart', onBegin);
+  map.events.add('multitouchend', onEnd);
+  container?.addEventListener('touchstart', onTouchStart, { passive: true });
+  container?.addEventListener('touchend', onTouchEnd, { passive: true });
+  container?.addEventListener('touchcancel', onEnd, { passive: true });
+
+  return () => {
+    try {
+      map.events.remove('actionbegin', onBegin);
+      map.events.remove('actionend', onEnd);
+      map.events.remove('multitouchstart', onBegin);
+      map.events.remove('multitouchend', onEnd);
+    } catch {
+      /* destroy */
+    }
+    container?.removeEventListener('touchstart', onTouchStart);
+    container?.removeEventListener('touchend', onTouchEnd);
+    container?.removeEventListener('touchcancel', onEnd);
+    setMapGesturing(map, false);
   };
 }
 
@@ -591,6 +629,7 @@ export function MapCanvas({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let map: any = null;
     let detachDiag: (() => void) | null = null;
+    let detachGestures: (() => void) | null = null;
 
     loadYmaps()
       .then((ymaps) => {
@@ -683,7 +722,10 @@ export function MapCanvas({
         );
 
         mapRef.current = map;
-        detachDiag = attachTileDiagnostics(map, containerRef.current);
+        detachGestures = attachGestureHints(map, containerRef.current);
+        if (import.meta.env.DEV) {
+          detachDiag = attachTileDiagnostics(map, containerRef.current);
+        }
         // Родительский Screen входит через transform/scale. После окончания
         // перехода Яндексу нужно повторно измерить настоящий viewport.
         window.requestAnimationFrame(() => map?.container.fitToViewport());
@@ -702,6 +744,7 @@ export function MapCanvas({
     return () => {
       cancelled = true;
       window.removeEventListener('resize', handleResize);
+      detachGestures?.();
       detachDiag?.();
       readyWaitersRef.current.forEach((resolve) => resolve());
       readyWaitersRef.current.clear();

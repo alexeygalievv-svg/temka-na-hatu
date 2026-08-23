@@ -20,7 +20,7 @@ export function PointEditorSheet({ point, index, onChange, onDelete, onClose }: 
     if (!point) return;
     void (async () => {
       const compressed = await compressImage(file);
-      if (point.photoPreview) URL.revokeObjectURL(point.photoPreview);
+      if (point.photoPreview?.startsWith('blob:')) URL.revokeObjectURL(point.photoPreview);
       onChange({ photoFile: compressed, photoPreview: URL.createObjectURL(compressed) });
     })();
   });

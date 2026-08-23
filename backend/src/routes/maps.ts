@@ -233,6 +233,7 @@ export async function mapRoutes(app: FastifyInstance) {
     return reply.code(201).send({
       id,
       link,
+      introPhotoUrl,
     });
   });
 

@@ -35,7 +35,7 @@ export function createMap(payload: {
   introButton?: string;
   introPhotoDataUrl?: string;
 }) {
-  return request<{ id: string; link: string }>('/api/maps', {
+  return request<{ id: string; link: string; introPhotoUrl?: string | null }>('/api/maps', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({
