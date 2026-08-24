@@ -75,8 +75,15 @@ body.map-gesturing::after {
   display: none;
 }
 
-body.map-gesturing .map-pin {
-  display: none;
+/* Во время щипка оставляем только слой тайлов — без пинов, панелей и copyright. */
+body.map-gesturing .map-pin,
+body.map-gesturing [class*="places-pane"],
+body.map-gesturing [class*="overlaps-pane"],
+body.map-gesturing [class*="shadows-pane"],
+body.map-gesturing [class*="hotspot-pane"],
+body.map-gesturing [class*="copyrights-pane"],
+body.map-gesturing [class*="controls-pane"] {
+  visibility: hidden !important;
 }
 
 body.map-gesturing .map-canvas__tint,
@@ -87,7 +94,8 @@ body.map-gesturing .viewer__caption,
 body.map-gesturing .viewer__explore-hint,
 body.map-gesturing .viewer__nudge,
 body.map-gesturing .viewer__skip {
-  display: none;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 @media (pointer: coarse) {
@@ -96,12 +104,15 @@ body.map-gesturing .viewer__skip {
   }
 
   .builder__header,
+  .builder__dock,
   .btn--ghost,
+  .viewer__topbar,
   .viewer__nudge,
   .viewer__caption,
-  .viewer__explore-hint {
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
+  .viewer__explore-hint,
+  .viewer__skip {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
   }
 
   .map-canvas__tint {

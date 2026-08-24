@@ -491,7 +491,7 @@ function attachGestureHints(map: any, container: HTMLElement | null): () => void
     endTimer = window.setTimeout(() => {
       endTimer = null;
       setMapGesturing(false);
-    }, 160);
+    }, 120);
   };
   const onTouchStart = (event: TouchEvent) => {
     if (event.touches.length >= 2) onBegin();
@@ -503,8 +503,6 @@ function attachGestureHints(map: any, container: HTMLElement | null): () => void
     if (event.touches.length < 2) onEnd();
   };
 
-  map.events.add('actionbegin', onBegin);
-  map.events.add('actionend', onEnd);
   map.events.add('multitouchstart', onBegin);
   map.events.add('multitouchend', onEnd);
   container?.addEventListener('touchstart', onTouchStart, { passive: true });
@@ -514,8 +512,6 @@ function attachGestureHints(map: any, container: HTMLElement | null): () => void
 
   return () => {
     try {
-      map.events.remove('actionbegin', onBegin);
-      map.events.remove('actionend', onEnd);
       map.events.remove('multitouchstart', onBegin);
       map.events.remove('multitouchend', onEnd);
     } catch {
@@ -743,8 +739,10 @@ export function MapCanvas({
           {
             suppressMapOpenBlock: true,
             maxAnimationZoomDifference: 23,
-            // На телефоне дробный зум при щипке — иначе зум «ступеньками».
-            avoidFractionalZoom: false,
+            // На телефоне дробный зум перерисовывает тайлы на каждом кадре щипка.
+            // Целые уровни: во время жеста GPU просто масштабирует текущие тайлы.
+            avoidFractionalZoom: touchMap,
+            autoFitToViewport: false,
             yandexMapDisablePoiInteractivity: true,
           },
         );
@@ -757,7 +755,7 @@ export function MapCanvas({
         }
         if (touchMap) {
           try {
-            map.behaviors.get('multiTouch')?.options.set({ tremor: 8 });
+            map.behaviors.get('multiTouch')?.options.set({ tremor: 2 });
           } catch {
             /* pinch останется со стандартной чувствительностью */
           }
@@ -820,10 +818,7 @@ export function MapCanvas({
         if (import.meta.env.DEV) {
           detachDiag = attachTileDiagnostics(map, containerRef.current);
         }
-        // Родительский Screen входит через transform/scale. После окончания
-        // перехода Яндексу нужно повторно измерить настоящий viewport.
         window.requestAnimationFrame(() => map?.container.fitToViewport());
-        window.setTimeout(() => map?.container.fitToViewport(), 550);
         readyWaitersRef.current.forEach((resolve) => resolve());
         readyWaitersRef.current.clear();
         setReady(true);
@@ -832,11 +827,21 @@ export function MapCanvas({
         if (!cancelled) setError(err.message);
       });
 
-    const handleResize = () => mapRef.current?.container.fitToViewport();
+    let resizeTimer: number | null = null;
+    const handleResize = () => {
+      if (document.body.classList.contains('map-gesturing')) return;
+      if (resizeTimer !== null) window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(() => {
+        resizeTimer = null;
+        if (document.body.classList.contains('map-gesturing')) return;
+        mapRef.current?.container.fitToViewport();
+      }, 220);
+    };
     window.addEventListener('resize', handleResize);
 
     return () => {
       cancelled = true;
+      if (resizeTimer !== null) window.clearTimeout(resizeTimer);
       window.removeEventListener('resize', handleResize);
       detachGestures?.();
       detachDiag?.();
