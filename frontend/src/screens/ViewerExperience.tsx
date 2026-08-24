@@ -8,7 +8,7 @@ import { Button } from '../components/Button';
 import { IntroOverlay } from '../components/IntroOverlay';
 import { PlaceDate } from '../components/PlaceDate';
 
-type Stage = 'intro' | 'reveal' | 'explore';
+type Stage = 'intro' | 'tour' | 'explore';
 type HintPhase = 'idle' | 'center' | 'dock';
 
 interface ViewerExperienceProps {
@@ -22,10 +22,13 @@ interface ViewerExperienceProps {
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const WIDE_ZOOM = 10;
+const CLOSE_ZOOM = 15;
+const HOLD_WIDE_MS = 1000;
+const HOLD_AFTER_ARRIVE_MS = 1400;
 
 /**
- * Экран получателя: интро → анимированное «путешествие» камеры по точкам
- * с поочерёдным появлением пинов → свободное исследование карты.
+ * Экран получателя: интро → по очереди подлёт к месту и карточка → свободная карта.
  */
 export function ViewerExperience({
   title,
@@ -36,19 +39,13 @@ export function ViewerExperience({
   exitLabel,
 }: ViewerExperienceProps) {
   const mapRef = useRef<MapHandle>(null);
-  const cancelledRef = useRef(false);
+  const tourGenRef = useRef(0);
   const [stage, setStage] = useState<Stage>('intro');
   const [visibleCount, setVisibleCount] = useState(0);
-  const [currentIndex, setCurrentIndex] = useState(-1);
+  const [tourIndex, setTourIndex] = useState(0);
+  const [cardOpen, setCardOpen] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [hintPhase, setHintPhase] = useState<HintPhase>('idle');
-
-  useEffect(() => {
-    cancelledRef.current = false;
-    return () => {
-      cancelledRef.current = true;
-    };
-  }, []);
 
   useEffect(() => {
     if (stage !== 'explore') {
@@ -63,76 +60,90 @@ export function ViewerExperience({
     };
   }, [stage]);
 
-  async function skipReveal() {
-    cancelledRef.current = true;
+  async function finishTour() {
+    tourGenRef.current += 1;
+    setCardOpen(false);
+    setActiveId(null);
+    setVisibleCount(points.length);
+    setStage('explore');
+    haptic('medium');
+    mapRef.current?.cancelFlight();
+    if (points.length > 0) mapRef.current?.fitAll(points, 900);
+  }
+
+  async function skipTour() {
     haptic('soft');
     await mapRef.current?.waitUntilReady();
-    mapRef.current?.cancelFlight();
-    setVisibleCount(points.length);
-    setCurrentIndex(-1);
-    setStage('explore');
-    if (points.length > 0) {
-      mapRef.current?.fitAll(points, 700);
-    }
+    await finishTour();
   }
 
-  async function startReveal() {
-    // На холодном устройстве SDK и первый слой карты могут загружаться дольше
-    // данных карты. Интро остаётся на экране, пока ymaps.Map не готов.
+  async function showStop(index: number) {
+    const point = points[index];
+    if (!point) {
+      await finishTour();
+      return;
+    }
+    const gen = ++tourGenRef.current;
+    setCardOpen(false);
+    setActiveId(null);
+    setTourIndex(index);
+    setVisibleCount((count) => Math.max(count, index + 1));
+    setStage('tour');
+
+    await sleep(index === 0 ? 80 : 280);
     await mapRef.current?.waitUntilReady();
-    if (cancelledRef.current) return;
-    if (points[0]) {
-      await mapRef.current?.preloadRoute(points[0].lat, points[0].lng, 15);
+    if (gen !== tourGenRef.current) return;
+    if (index === 0) {
+      await sleep(HOLD_WIDE_MS);
+      if (gen !== tourGenRef.current) return;
     }
-    if (cancelledRef.current) return;
-    setStage('reveal');
+    await mapRef.current?.preloadRoute(point.lat, point.lng, CLOSE_ZOOM);
+    if (gen !== tourGenRef.current) return;
+    await mapRef.current?.flyTo(point.lat, point.lng, CLOSE_ZOOM, 1700);
+    if (gen !== tourGenRef.current) return;
+    await sleep(HOLD_AFTER_ARRIVE_MS);
+    if (gen !== tourGenRef.current) return;
+    setCardOpen(true);
     haptic('medium');
-
-    for (let i = 0; i < points.length; i++) {
-      if (cancelledRef.current) return;
-      setCurrentIndex(i);
-      await mapRef.current?.flyTo(points[i].lat, points[i].lng, 15, 1700);
-      if (cancelledRef.current) return;
-      setVisibleCount(i + 1);
-      haptic('light');
-      const next = points[i + 1];
-      await Promise.all([
-        sleep(1250),
-        next
-          ? mapRef.current?.preloadRoute(next.lat, next.lng, 15) ?? Promise.resolve()
-          : Promise.resolve(),
-      ]);
-    }
-    if (cancelledRef.current) return;
-    setCurrentIndex(-1);
-    if (points.length > 1) {
-      const midLat = points.reduce((sum, p) => sum + p.lat, 0) / points.length;
-      const midLng = points.reduce((sum, p) => sum + p.lng, 0) / points.length;
-      await mapRef.current?.preloadRoute(midLat, midLng, 11);
-      if (cancelledRef.current) return;
-      mapRef.current?.fitAll(points, 1500);
-      await sleep(1600);
-    }
-    if (cancelledRef.current) return;
-    setStage('explore');
+    const next = points[index + 1];
+    if (next) void mapRef.current?.preloadRoute(next.lat, next.lng, CLOSE_ZOOM);
   }
 
-  const shownPoints = stage === 'explore' ? points : points.slice(0, visibleCount);
-  const activePoint = points.find((p) => p.id === activeId) ?? null;
-  const activeIndex = activePoint ? points.indexOf(activePoint) : -1;
+  async function startTour() {
+    haptic('medium');
+    await mapRef.current?.waitUntilReady();
+    await showStop(0);
+  }
 
-  // Без мемоизации новый массив на каждый рендер заставлял карту
-  // переставлять все метки прямо во время перелёта.
+  function goNext() {
+    if (tourIndex >= points.length - 1) {
+      void finishTour();
+      return;
+    }
+    void showStop(tourIndex + 1);
+  }
+
+  const shownPoints = stage === 'intro' ? [] : points.slice(0, visibleCount);
+  const tourPoint = points[tourIndex] ?? null;
+  const activePoint =
+    stage === 'tour'
+      ? cardOpen
+        ? tourPoint
+        : null
+      : points.find((point) => point.id === activeId) ?? null;
+  const activeIndex = activePoint ? points.indexOf(activePoint) : -1;
+  const lastStop = tourIndex >= points.length - 1;
+
   const pins = useMemo(
     () =>
-      shownPoints.map((p, i) => ({
-        id: p.id,
-        lat: p.lat,
-        lng: p.lng,
+      shownPoints.map((point, i) => ({
+        id: point.id,
+        lat: point.lat,
+        lng: point.lng,
         label: String(i + 1),
-        active: p.id === activeId,
+        active: stage === 'tour' ? i === tourIndex : point.id === activeId,
       })),
-    [shownPoints, activeId],
+    [shownPoints, stage, tourIndex, activeId],
   );
 
   return (
@@ -140,7 +151,7 @@ export function ViewerExperience({
       <MapCanvas
         ref={mapRef}
         initialCenter={points[0] ?? { lat: 55.7512, lng: 37.6184 }}
-        initialZoom={15}
+        initialZoom={WIDE_ZOOM}
         pins={pins}
         onPinClick={(id) => {
           if (stage !== 'explore') return;
@@ -150,7 +161,6 @@ export function ViewerExperience({
         }}
       />
 
-      {/* Интро-занавес */}
       <AnimatePresence>
         {stage === 'intro' && (
           <motion.div
@@ -166,10 +176,10 @@ export function ViewerExperience({
               buttonText={intro.buttonText}
               photoPreview={intro.photoPreview}
               pointCount={points.length}
-              onOpen={startReveal}
+              onOpen={startTour}
             />
             {onExit && (
-              <button type="button" className="viewer__skip" onClick={() => void skipReveal()}>
+              <button type="button" className="viewer__skip" onClick={() => void skipTour()}>
                 Пропустить
               </button>
             )}
@@ -177,35 +187,33 @@ export function ViewerExperience({
         )}
       </AnimatePresence>
 
-      {stage === 'reveal' && (
-        <button type="button" className="viewer__skip" onClick={() => void skipReveal()}>
+      {stage === 'tour' && (
+        <button type="button" className="viewer__skip" onClick={() => void skipTour()}>
           Пропустить
         </button>
       )}
 
-      {/* Подпись текущей точки во время «путешествия» */}
       <AnimatePresence mode="wait">
-        {stage === 'reveal' && currentIndex >= 0 && (
+        {stage === 'tour' && !cardOpen && tourPoint && (
           <motion.div
-            key={currentIndex}
+            key={tourPoint.id}
             className="viewer__caption"
             initial={{ opacity: 0, y: 26, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -14, scale: 0.97 }}
             transition={{ type: 'spring', stiffness: 300, damping: 28 }}
           >
-            <span className="viewer__caption-num">{currentIndex + 1}</span>
+            <span className="viewer__caption-num">{tourIndex + 1}</span>
             <span className="viewer__caption-copy">
               <span className="viewer__caption-title">
-                {points[currentIndex].title || `Место ${currentIndex + 1}`}
+                {tourPoint.title || `Место ${tourIndex + 1}`}
               </span>
-              <PlaceDate value={points[currentIndex].happenedOn} className="place-date--caption" />
+              <PlaceDate value={tourPoint.happenedOn} className="place-date--caption" />
             </span>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Шапка и подсказка после раскрытия */}
       <AnimatePresence>
         {stage === 'explore' && (
           <motion.header
@@ -237,9 +245,15 @@ export function ViewerExperience({
             transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
           >
             <span className="viewer__nudge-icon" aria-hidden="true">
-              <svg viewBox="0 0 40 42">
-                <path d="M20 37 C20 37 5 25.5 5 15.5 C5 9.5 9.5 5 15.5 5 C18.5 5 20.5 7 20 9.5 C19.5 7 21.5 5 24.5 5 C30.5 5 35 9.5 35 15.5 C35 25.5 20 37 20 37 Z" />
-              </svg>
+              <span className="viewer__nudge-pin">
+                <svg className="map-pin__heart-svg" viewBox="0 0 40 42" xmlns="http://www.w3.org/2000/svg">
+                  <path
+                    className="map-pin__heart-shape"
+                    d="M20 37 C20 37 5 25.5 5 15.5 C5 9.5 9.5 5 15.5 5 C18.5 5 20.5 7 20 9.5 C19.5 7 21.5 5 24.5 5 C30.5 5 35 9.5 35 15.5 C35 25.5 20 37 20 37 Z"
+                  />
+                </svg>
+                <span className="map-pin__shadow" />
+              </span>
             </span>
             <p>Нажимайте на точки, чтобы открыть воспоминания</p>
           </motion.div>
@@ -264,6 +278,9 @@ export function ViewerExperience({
         point={activePoint}
         index={activeIndex}
         total={points.length}
+        dismissible={stage === 'explore'}
+        nextLabel={stage === 'tour' ? (lastStop ? 'Смотреть карту' : 'Далее') : undefined}
+        onNext={stage === 'tour' ? goNext : undefined}
         onClose={() => setActiveId(null)}
       />
     </div>

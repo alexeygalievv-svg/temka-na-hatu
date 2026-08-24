@@ -4,12 +4,17 @@ import type { MemoryPoint } from '../types';
 import { hasPhotoUrl } from '../lib/media';
 import { useSheetReady } from '../lib/sheetOpen';
 import { PlaceDate } from './PlaceDate';
+import { Button } from './Button';
 
 interface MemoryCardProps {
   point: MemoryPoint | null;
   index: number;
   total: number;
   onClose: () => void;
+  /** Если false — карточку нельзя смахнуть или закрыть тапом по фону. */
+  dismissible?: boolean;
+  nextLabel?: string;
+  onNext?: () => void;
 }
 
 const COMPACT_RATIO = 0.78;
@@ -34,12 +39,21 @@ function fitMemoryCardHeight(card: HTMLElement | null) {
 }
 
 /** Карточка воспоминания: пружинный подъём, фото-«полароид», свайп вниз для закрытия. */
-export function MemoryCard({ point, index, total, onClose }: MemoryCardProps) {
+export function MemoryCard({
+  point,
+  index,
+  total,
+  onClose,
+  dismissible = true,
+  nextLabel,
+  onNext,
+}: MemoryCardProps) {
   const dragControls = useDragControls();
   const cardRef = useRef<HTMLElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const showPhoto = hasPhotoUrl(point?.photoUrl);
   const ready = useSheetReady(point?.id ?? false);
+  const canDismiss = dismissible && ready;
 
   useLayoutEffect(() => {
     if (!point || !ready) return;
@@ -81,8 +95,8 @@ export function MemoryCard({ point, index, total, onClose }: MemoryCardProps) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.3 }}
-            style={{ pointerEvents: ready ? 'auto' : 'none' }}
-            onClick={ready ? onClose : undefined}
+            style={{ pointerEvents: canDismiss ? 'auto' : 'none' }}
+            onClick={canDismiss ? onClose : undefined}
           />
           <motion.article
             key={point.id}
@@ -92,20 +106,20 @@ export function MemoryCard({ point, index, total, onClose }: MemoryCardProps) {
             animate={{ y: 0 }}
             exit={{ y: '108%' }}
             transition={{ type: 'spring', stiffness: 280, damping: 32 }}
-            drag={ready ? 'y' : false}
+            drag={canDismiss ? 'y' : false}
             dragListener={false}
             dragControls={dragControls}
             dragConstraints={{ top: 0, bottom: 0 }}
             dragElastic={{ top: 0.05, bottom: 0.5 }}
             onDragEnd={(_, info) => {
-              if (!ready) return;
+              if (!canDismiss) return;
               if (info.offset.y > 100 || info.velocity.y > 500) onClose();
             }}
           >
             <div
               className="memory-card__handle"
               onPointerDown={(event) => {
-                if (!ready) return;
+                if (!canDismiss) return;
                 dragControls.start(event);
               }}
             >
@@ -158,6 +172,13 @@ export function MemoryCard({ point, index, total, onClose }: MemoryCardProps) {
                 </motion.div>
               )}
             </div>
+            {onNext && nextLabel && (
+              <div className="memory-card__actions">
+                <Button wide onClick={onNext}>
+                  {nextLabel}
+                </Button>
+              </div>
+            )}
           </motion.article>
         </>
       )}

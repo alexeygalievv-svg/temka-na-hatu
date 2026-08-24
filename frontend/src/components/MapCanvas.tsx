@@ -31,9 +31,12 @@ interface MapCanvasProps {
 /** Размеры пина — должны совпадать с CSS и iconImageOffset. */
 const PIN_W = 40;
 const PIN_H = 42;
-/** Сердечко 40px: если ближе — визуально уже стопка, даже если координаты чуть разные. */
-const PIN_FAN_ON_PX = 34;
-const PIN_FAN_OFF_PX = 46;
+/** 1px на округление проекции: веер только если иконка целиком под другой. */
+const PIN_COVER_TOL = 1;
+
+type PinItem = { pin: MapPin; px: number; py: number };
+type PinAabb = { left: number; right: number; top: number; bottom: number };
+type PinFan = { angle: number; x: number; y: number; z: number; clickId: string; interactive: boolean };
 
 function prefersTouchMap(): boolean {
   if (typeof window === 'undefined') return false;
@@ -44,63 +47,97 @@ function prefersTouchMap(): boolean {
   );
 }
 
-function clusterMaxDistance<T extends { px: number; py: number }>(items: T[]): number {
-  let max = 0;
-  for (let i = 0; i < items.length; i++) {
-    for (let j = i + 1; j < items.length; j++) {
-      max = Math.max(max, Math.hypot(items[i].px - items[j].px, items[i].py - items[j].py));
-    }
+function pinAabb(px: number, py: number): PinAabb {
+  return {
+    left: px - PIN_W / 2,
+    right: px + PIN_W / 2,
+    top: py - PIN_H,
+    bottom: py,
+  };
+}
+
+function rotatedPinAabb(originPx: number, originPy: number, angleDeg: number): PinAabb {
+  const rad = (angleDeg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const corners: Array<[number, number]> = [
+    [originPx - PIN_W / 2, originPy - PIN_H],
+    [originPx + PIN_W / 2, originPy - PIN_H],
+    [originPx + PIN_W / 2, originPy],
+    [originPx - PIN_W / 2, originPy],
+  ];
+  let left = Infinity;
+  let right = -Infinity;
+  let top = Infinity;
+  let bottom = -Infinity;
+  for (const [x, y] of corners) {
+    const dx = x - originPx;
+    const dy = y - originPy;
+    const rx = originPx + dx * cos - dy * sin;
+    const ry = originPy + dx * sin + dy * cos;
+    left = Math.min(left, rx);
+    right = Math.max(right, rx);
+    top = Math.min(top, ry);
+    bottom = Math.max(bottom, ry);
   }
-  return max;
+  return { left, right, top, bottom };
 }
 
-function clusterKey(items: Array<{ pin: MapPin }>): string {
-  return items
-    .map((item) => item.pin.id)
-    .sort()
-    .join('|');
+function aabbFullyContains(outer: PinAabb, inner: PinAabb): boolean {
+  return (
+    inner.left >= outer.left - PIN_COVER_TOL &&
+    inner.right <= outer.right + PIN_COVER_TOL &&
+    inner.top >= outer.top - PIN_COVER_TOL &&
+    inner.bottom <= outer.bottom + PIN_COVER_TOL
+  );
 }
 
-function shouldFanCluster(
-  cluster: Array<{ pin: MapPin; px: number; py: number }>,
-  fanLatch: Map<string, boolean>,
+function pinFullyCovers(
+  origin: { px: number; py: number },
+  angleDeg: number,
+  other: { px: number; py: number },
 ): boolean {
-  if (cluster.length <= 1) return false;
-  const key = clusterKey(cluster);
-  const spread = clusterMaxDistance(cluster);
-  const wasFanned = fanLatch.get(key) ?? false;
-  if (wasFanned) {
-    if (spread > PIN_FAN_OFF_PX) {
-      fanLatch.set(key, false);
-      return false;
-    }
-    return true;
-  }
-  if (spread < PIN_FAN_ON_PX) {
-    fanLatch.set(key, true);
-    return true;
-  }
-  return false;
+  return aabbFullyContains(rotatedPinAabb(origin.px, origin.py, angleDeg), pinAabb(other.px, other.py));
 }
 
-/** Небольшой разворот вокруг нижней точки — как колода карт, без сдвига по карте. */
+/** Ровный разворот вокруг одной нижней точки. */
 function fanAngles(count: number): number[] {
   if (count <= 1) return [0];
-  if (count === 2) return [-11, 10];
-  const max = Math.min(20, 7 + count * 2.2);
+  const max = Math.min(26, 11 + (count - 2) * 3);
   return Array.from({ length: count }, (_, i) => {
     const t = i / (count - 1);
     return Math.round((-max + t * 2 * max) * 10) / 10;
   });
 }
 
+function clusterCentroid(cluster: PinItem[]): { px: number; py: number } {
+  let px = 0;
+  let py = 0;
+  for (const item of cluster) {
+    px += item.px;
+    py += item.py;
+  }
+  return { px: px / cluster.length, py: py / cluster.length };
+}
+
+function collectGroups(items: PinItem[], parent: number[]): PinItem[][] {
+  const groups = new Map<number, PinItem[]>();
+  items.forEach((item, index) => {
+    let root = index;
+    while (parent[root] !== root) root = parent[root];
+    const group = groups.get(root);
+    if (group) group.push(item);
+    else groups.set(root, [item]);
+  });
+  return [...groups.values()];
+}
+
 function computePinFans(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   map: any,
   pins: MapPin[],
-  fanLatch: Map<string, boolean>,
-): Map<string, { angle: number; z: number; clickId: string; interactive: boolean }> {
-  const offsets = new Map<string, { angle: number; z: number; clickId: string; interactive: boolean }>();
+): Map<string, PinFan> {
+  const offsets = new Map<string, PinFan>();
   if (pins.length === 0) return offsets;
   try {
     const zoom = Number(map.getZoom?.() ?? 10);
@@ -109,24 +146,64 @@ function computePinFans(
       const [px, py] = projection.toGlobalPixels([pin.lat, pin.lng], zoom) as [number, number];
       return { pin, px, py };
     });
-    const assigned = new Set<string>();
-    for (const seed of items) {
-      if (assigned.has(seed.pin.id)) continue;
-      const cluster = items
-        .filter(
-          (item) =>
-            !assigned.has(item.pin.id) &&
-            Math.hypot(item.px - seed.px, item.py - seed.py) < PIN_FAN_OFF_PX,
-        )
-        .sort((a, b) => Number(a.pin.label) - Number(b.pin.label));
-      cluster.forEach((item) => assigned.add(item.pin.id));
-      const fanned = shouldFanCluster(cluster, fanLatch);
-      const angles = fanned ? fanAngles(cluster.length) : cluster.map(() => 0);
+    const parent = items.map((_, index) => index);
+    const find = (index: number): number => {
+      if (parent[index] !== index) parent[index] = find(parent[index]);
+      return parent[index];
+    };
+    const unite = (a: number, b: number) => {
+      const rootA = find(a);
+      const rootB = find(b);
+      if (rootA !== rootB) parent[rootB] = rootA;
+    };
+    const indexById = new Map(items.map((item, index) => [item.pin.id, index]));
+
+    for (let i = 0; i < items.length; i++) {
+      for (let j = i + 1; j < items.length; j++) {
+        if (
+          pinFullyCovers(items[i], 0, items[j]) ||
+          pinFullyCovers(items[j], 0, items[i])
+        ) {
+          unite(i, j);
+        }
+      }
+    }
+
+    let grew = true;
+    for (let step = 0; grew && step < items.length; step++) {
+      grew = false;
+      const groups = collectGroups(items, parent);
+      for (const cluster of groups) {
+        if (cluster.length < 2) continue;
+        cluster.sort((a, b) => Number(a.pin.label) - Number(b.pin.label));
+        const origin = clusterCentroid(cluster);
+        const angles = fanAngles(cluster.length);
+        const inFan = new Set(cluster.map((item) => item.pin.id));
+        for (const other of items) {
+          if (inFan.has(other.pin.id)) continue;
+          const covered = cluster.some((_, index) => pinFullyCovers(origin, angles[index] ?? 0, other));
+          if (!covered) continue;
+          const from = indexById.get(cluster[0].pin.id);
+          const to = indexById.get(other.pin.id);
+          if (from === undefined || to === undefined) continue;
+          unite(from, to);
+          grew = true;
+        }
+      }
+    }
+
+    for (const cluster of collectGroups(items, parent)) {
+      cluster.sort((a, b) => Number(a.pin.label) - Number(b.pin.label));
+      const fanned = cluster.length > 1;
+      const origin = fanned ? clusterCentroid(cluster) : cluster[0];
+      const angles = fanned ? fanAngles(cluster.length) : [0];
       const topPin = cluster[cluster.length - 1]?.pin;
       cluster.forEach((item, index) => {
         const isTop = !fanned || item.pin.id === topPin?.id;
         offsets.set(item.pin.id, {
           angle: angles[index] ?? 0,
+          x: fanned ? origin.px - item.px : 0,
+          y: fanned ? origin.py - item.py : 0,
           z: item.pin.active ? 1400 : isTop ? 1200 + index : 900 + index,
           clickId: fanned && topPin ? topPin.id : item.pin.id,
           interactive: isTop,
@@ -135,7 +212,7 @@ function computePinFans(
     }
   } catch {
     for (const pin of pins) {
-      offsets.set(pin.id, { angle: 0, z: 1000, clickId: pin.id, interactive: true });
+      offsets.set(pin.id, { angle: 0, x: 0, y: 0, z: 1000, clickId: pin.id, interactive: true });
     }
   }
   return offsets;
@@ -145,6 +222,7 @@ const TILE_SIZE = 256;
 const PRELOAD_TIMEOUT_MS = 4000;
 const PRELOAD_MAX_TILES = 96;
 const FIRST_TILES_TIMEOUT_MS = 5000;
+const OVERVIEW_HOLD_MS = 1600;
 
 const sleep = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 
@@ -393,21 +471,32 @@ function attachTileDiagnostics(map: any, container: HTMLElement | null): () => v
   };
 }
 
-function setMapGesturing(map: { geoObjects?: { options?: { set?: (key: string, value: boolean) => void } } }, on: boolean) {
+function setMapGesturing(on: boolean) {
   document.body.classList.toggle('map-gesturing', on);
-  try {
-    map.geoObjects?.options?.set?.('visible', !on);
-  } catch {
-    /* пины останутся на месте */
-  }
 }
 
 /** На телефоне сразу гасим оверлеи и пины — иначе щипок рвётся. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function attachGestureHints(map: any, container: HTMLElement | null): () => void {
-  const onBegin = () => setMapGesturing(map, true);
-  const onEnd = () => setMapGesturing(map, false);
+  let endTimer: number | null = null;
+  const onBegin = () => {
+    if (endTimer !== null) {
+      window.clearTimeout(endTimer);
+      endTimer = null;
+    }
+    setMapGesturing(true);
+  };
+  const onEnd = () => {
+    if (endTimer !== null) window.clearTimeout(endTimer);
+    endTimer = window.setTimeout(() => {
+      endTimer = null;
+      setMapGesturing(false);
+    }, 160);
+  };
   const onTouchStart = (event: TouchEvent) => {
+    if (event.touches.length >= 2) onBegin();
+  };
+  const onTouchMove = (event: TouchEvent) => {
     if (event.touches.length >= 2) onBegin();
   };
   const onTouchEnd = (event: TouchEvent) => {
@@ -419,6 +508,7 @@ function attachGestureHints(map: any, container: HTMLElement | null): () => void
   map.events.add('multitouchstart', onBegin);
   map.events.add('multitouchend', onEnd);
   container?.addEventListener('touchstart', onTouchStart, { passive: true });
+  container?.addEventListener('touchmove', onTouchMove, { passive: true });
   container?.addEventListener('touchend', onTouchEnd, { passive: true });
   container?.addEventListener('touchcancel', onEnd, { passive: true });
 
@@ -431,10 +521,12 @@ function attachGestureHints(map: any, container: HTMLElement | null): () => void
     } catch {
       /* destroy */
     }
+    if (endTimer !== null) window.clearTimeout(endTimer);
     container?.removeEventListener('touchstart', onTouchStart);
+    container?.removeEventListener('touchmove', onTouchMove);
     container?.removeEventListener('touchend', onTouchEnd);
     container?.removeEventListener('touchcancel', onEnd);
-    setMapGesturing(map, false);
+    setMapGesturing(false);
   };
 }
 
@@ -608,8 +700,6 @@ export function MapCanvas({
   const placemarksRef = useRef<Map<string, any>>(new Map());
   /** Последние отрисованные данные пина — чтобы не трогать DOM зря во время анимации. */
   const pinStateRef = useRef<Map<string, string>>(new Map());
-  /** Запоминаем, был ли веер у кластера — гистерезис против дёрганья на границе зума. */
-  const pinFanLatchRef = useRef<Map<string, boolean>>(new Map());
   /** Клик по любому сердечку веера → id верхней (видимая цифра). */
   const pinClickAliasRef = useRef<Map<string, string>>(new Map());
   /** URL тайлов, которые уже скачали — не гоняем сеть повторно. */
@@ -618,6 +708,7 @@ export function MapCanvas({
   const flightGenRef = useRef(0);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [touchMap, setTouchMap] = useState(false);
 
   const mapClickRef = useRef(onMapClick);
   mapClickRef.current = onMapClick;
@@ -639,6 +730,7 @@ export function MapCanvas({
         pinLayoutRef.current = pinLayoutClass(ymaps);
 
         const touchMap = prefersTouchMap();
+        setTouchMap(touchMap);
 
         map = new ymaps.Map(
           containerRef.current,
@@ -665,7 +757,7 @@ export function MapCanvas({
         }
         if (touchMap) {
           try {
-            map.behaviors.get('multiTouch')?.options.set({ tremor: 1 });
+            map.behaviors.get('multiTouch')?.options.set({ tremor: 8 });
           } catch {
             /* pinch останется со стандартной чувствительностью */
           }
@@ -755,6 +847,7 @@ export function MapCanvas({
       if (map) map.destroy();
       if (containerRef.current) containerRef.current.replaceChildren();
       mapRef.current = null;
+      setTouchMap(false);
       setReady(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -779,20 +872,20 @@ export function MapCanvas({
     }
 
     const applyPins = () => {
-      const fans = computePinFans(map, pins, pinFanLatchRef.current);
+      const fans = computePinFans(map, pins);
       const aliases = pinClickAliasRef.current;
       aliases.clear();
       pins.forEach((pin) => {
         let placemark = existing.get(pin.id);
-        const fan = fans.get(pin.id) ?? { angle: 0, z: 1000, clickId: pin.id, interactive: true };
+        const fan = fans.get(pin.id) ?? { angle: 0, x: 0, y: 0, z: 1000, clickId: pin.id, interactive: true };
         aliases.set(pin.id, fan.clickId);
         const props = {
           label: pin.label,
           activeClass: pin.active ? 'map-pin--active' : '',
           fanClass: fan.interactive ? 'map-pin--fan-top' : 'map-pin--fan-under',
-          fanStyle: `--fan-angle:${fan.angle}deg;`,
+          fanStyle: `--fan-angle:${fan.angle}deg;--fan-x:${fan.x.toFixed(1)}px;--fan-y:${fan.y.toFixed(1)}px;`,
         };
-        const signature = `${pin.label}|${props.activeClass}|${props.fanClass}|${pin.lat}|${pin.lng}|${fan.angle}|${fan.clickId}|${fan.interactive}`;
+        const signature = `${pin.label}|${props.activeClass}|${props.fanClass}|${pin.lat}|${pin.lng}|${fan.angle}|${fan.x.toFixed(1)}|${fan.y.toFixed(1)}|${fan.clickId}|${fan.interactive}`;
 
         if (!placemark) {
           placemark = new ymaps.Placemark([pin.lat, pin.lng], props, {
@@ -1026,15 +1119,26 @@ export function MapCanvas({
           }
 
           if (nearby) {
-            await waitForAnimation(
-              map.panTo(dest, {
-                duration: animDuration,
-                timingFunction: 'ease-in-out',
-                flying: false,
-                safe: false,
-              }),
-              animDuration,
-            );
+            const zoomDiff = Math.abs(fromZoom - targetZoom);
+            if (zoomDiff > 0.2) {
+              await waitForAnimation(
+                map.setCenter(dest, targetZoom, {
+                  duration: animDuration,
+                  timingFunction: 'ease-in-out',
+                }),
+                animDuration,
+              );
+            } else {
+              await waitForAnimation(
+                map.panTo(dest, {
+                  duration: animDuration,
+                  timingFunction: 'ease-in-out',
+                  flying: false,
+                  safe: false,
+                }),
+                animDuration,
+              );
+            }
             if (!stillFlying()) return;
             await waitForVisibleTiles(map, FIRST_TILES_TIMEOUT_MS);
             return;
@@ -1060,6 +1164,8 @@ export function MapCanvas({
           await waitForVisibleTiles(map, 8000);
           if (!stillFlying()) return;
           logTile('FLY_OUT_READY', { zoom: map.getZoom?.(), center: map.getCenter?.() });
+          await sleep(OVERVIEW_HOLD_MS);
+          if (!stillFlying()) return;
 
           logTile('FLY_IN', { dest, zoom: targetZoom, inMs });
           await waitForAnimation(
@@ -1112,9 +1218,9 @@ export function MapCanvas({
   );
 
   return (
-    <div className="map-canvas">
+    <div className={touchMap ? 'map-canvas map-canvas--touch' : 'map-canvas'}>
       <div ref={containerRef} className="map-canvas__map" />
-      <div className="map-canvas__tint" aria-hidden="true" />
+      {!touchMap && <div className="map-canvas__tint" aria-hidden="true" />}
       {error && (
         <div className="map-canvas__error">
           <p>Карта не загрузилась</p>
