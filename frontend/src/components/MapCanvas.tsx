@@ -623,6 +623,7 @@ export function MapCanvas({
   mapClickRef.current = onMapClick;
   const pinClickRef = useRef(onPinClick);
   pinClickRef.current = onPinClick;
+  const lastPinClickAtRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -701,6 +702,7 @@ export function MapCanvas({
           'click',
           (event: { get: (name: string) => number[] }) => {
             if (!mapClickRef.current) return;
+            if (Date.now() - lastPinClickAtRef.current < 500) return;
             const coords = event.get('coords');
             const pixel = event.get('pixel') ?? event.get('position');
             if (!coords || !pixel) return;
@@ -811,6 +813,7 @@ export function MapCanvas({
           const ownId = pin.id;
           placemark.events.add('click', (event: { stopPropagation: () => void }) => {
             event.stopPropagation();
+            lastPinClickAtRef.current = Date.now();
             const target = pinClickAliasRef.current.get(ownId) ?? ownId;
             pinClickRef.current?.(target);
           });

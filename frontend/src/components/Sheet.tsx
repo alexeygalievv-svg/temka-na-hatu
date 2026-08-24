@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { AnimatePresence, motion, useDragControls } from 'framer-motion';
 import { hideSoftKeyboard } from '../lib/keyboard';
+import { useSheetReady } from '../lib/sheetOpen';
 
 interface SheetProps {
   open: boolean;
@@ -33,6 +34,7 @@ export function Sheet({ open, onClose, title, children }: SheetProps) {
   const dragControls = useDragControls();
   const sheetRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const ready = useSheetReady(open && title ? title : open ? 'sheet' : false);
 
   useEffect(() => {
     if (!open) return;
@@ -88,7 +90,8 @@ export function Sheet({ open, onClose, title, children }: SheetProps) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.25 }}
-            onClick={onClose}
+            style={{ pointerEvents: ready ? 'auto' : 'none' }}
+            onClick={ready ? onClose : undefined}
           />
           <motion.div
             ref={sheetRef}
@@ -98,18 +101,20 @@ export function Sheet({ open, onClose, title, children }: SheetProps) {
             animate={{ y: 0 }}
             exit={{ y: '105%' }}
             transition={{ type: 'spring', stiffness: 320, damping: 34 }}
-            drag="y"
+            drag={ready ? 'y' : false}
             dragListener={false}
             dragControls={dragControls}
             dragConstraints={{ top: 0, bottom: 0 }}
             dragElastic={{ top: 0, bottom: 0.5 }}
             onDragEnd={(_, info) => {
+              if (!ready) return;
               if (info.offset.y > 90 || info.velocity.y > 500) onClose();
             }}
           >
             <div
               className="sheet__handle"
               onPointerDown={(event) => {
+                if (!ready) return;
                 hideSoftKeyboard();
                 dragControls.start(event);
               }}

@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef } from 'react';
 import { AnimatePresence, motion, useDragControls } from 'framer-motion';
 import type { MemoryPoint } from '../types';
 import { hasPhotoUrl } from '../lib/media';
+import { useSheetReady } from '../lib/sheetOpen';
 import { PlaceDate } from './PlaceDate';
 
 interface MemoryCardProps {
@@ -38,9 +39,10 @@ export function MemoryCard({ point, index, total, onClose }: MemoryCardProps) {
   const cardRef = useRef<HTMLElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const showPhoto = hasPhotoUrl(point?.photoUrl);
+  const ready = useSheetReady(point?.id ?? false);
 
   useLayoutEffect(() => {
-    if (!point) return;
+    if (!point || !ready) return;
 
     const card = cardRef.current;
     const fit = () => fitMemoryCardHeight(card);
@@ -67,7 +69,7 @@ export function MemoryCard({ point, index, total, onClose }: MemoryCardProps) {
       window.removeEventListener('resize', fit);
       if (card) card.style.maxHeight = '';
     };
-  }, [point]);
+  }, [point, ready]);
 
   return (
     <AnimatePresence>
@@ -79,28 +81,33 @@ export function MemoryCard({ point, index, total, onClose }: MemoryCardProps) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.3 }}
-            onClick={onClose}
+            style={{ pointerEvents: ready ? 'auto' : 'none' }}
+            onClick={ready ? onClose : undefined}
           />
           <motion.article
             key={point.id}
             ref={cardRef}
             className="memory-card"
-            initial={{ y: '108%', scale: 0.92, opacity: 0.6 }}
-            animate={{ y: 0, scale: 1, opacity: 1 }}
-            exit={{ y: '108%', scale: 0.95, opacity: 0 }}
-            transition={{ type: 'spring', stiffness: 260, damping: 30 }}
-            drag="y"
+            initial={{ y: '108%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '108%' }}
+            transition={{ type: 'spring', stiffness: 280, damping: 32 }}
+            drag={ready ? 'y' : false}
             dragListener={false}
             dragControls={dragControls}
             dragConstraints={{ top: 0, bottom: 0 }}
             dragElastic={{ top: 0.05, bottom: 0.5 }}
             onDragEnd={(_, info) => {
+              if (!ready) return;
               if (info.offset.y > 100 || info.velocity.y > 500) onClose();
             }}
           >
             <div
               className="memory-card__handle"
-              onPointerDown={(event) => dragControls.start(event)}
+              onPointerDown={(event) => {
+                if (!ready) return;
+                dragControls.start(event);
+              }}
             >
               <div className="sheet__grip" aria-hidden="true" />
               <span className="memory-card__counter">
