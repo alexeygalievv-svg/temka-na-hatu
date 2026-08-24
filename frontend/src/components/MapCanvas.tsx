@@ -33,6 +33,7 @@ const PIN_W = 40;
 const PIN_H = 42;
 /** 1px на округление проекции: веер только если иконка целиком под другой. */
 const PIN_COVER_TOL = 1;
+const PIN_ICON_CACHE = new Map<string, string>();
 
 type PinItem = { pin: MapPin; px: number; py: number };
 type PinAabb = { left: number; right: number; top: number; bottom: number };
@@ -471,26 +472,47 @@ function attachTileDiagnostics(map: any, container: HTMLElement | null): () => v
   };
 }
 
-function setMapGesturing(on: boolean) {
+function touchPinIconUrl(label: string, active: boolean, angle: number, fanX: number, fanY: number): string {
+  const key = `${label}|${active}|${angle}|${fanX}|${fanY}`;
+  const cached = PIN_ICON_CACHE.get(key);
+  if (cached) return cached;
+  const scale = active ? 1.16 : 1;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="42" viewBox="0 0 40 42"><g transform="translate(${20 + fanX} ${42 + fanY}) rotate(${angle}) scale(${scale}) translate(-20 -42)"><path d="M20 37 C20 37 5 25.5 5 15.5 C5 9.5 9.5 5 15.5 5 C18.5 5 20.5 7 20 9.5 C19.5 7 21.5 5 24.5 5 C30.5 5 35 9.5 35 15.5 C35 25.5 20 37 20 37 Z" fill="#c25932" stroke="#fff7ec" stroke-width="2.2"/><text x="20" y="19.5" text-anchor="middle" dominant-baseline="middle" fill="#fff7ec" font-family="Georgia, serif" font-weight="700" font-size="15">${label}</text></g></svg>`;
+  const url = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  PIN_ICON_CACHE.set(key, url);
+  return url;
+}
+
+function setMapGesturing(map: { geoObjects?: { options?: { set?: (key: string, value: boolean) => void } } }, on: boolean) {
   document.body.classList.toggle('map-gesturing', on);
+  try {
+    map.geoObjects?.options?.set?.('visible', !on);
+  } catch {
+    /* пины останутся на месте */
+  }
 }
 
 /** На телефоне сразу гасим оверлеи и пины — иначе щипок рвётся. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function attachGestureHints(map: any, container: HTMLElement | null): () => void {
+function attachGestureHints(
+  map: any,
+  container: HTMLElement | null,
+  onGestureEnd?: () => void,
+): () => void {
   let endTimer: number | null = null;
   const onBegin = () => {
     if (endTimer !== null) {
       window.clearTimeout(endTimer);
       endTimer = null;
     }
-    setMapGesturing(true);
+    setMapGesturing(map, true);
   };
   const onEnd = () => {
     if (endTimer !== null) window.clearTimeout(endTimer);
     endTimer = window.setTimeout(() => {
       endTimer = null;
-      setMapGesturing(false);
+      setMapGesturing(map, false);
+      onGestureEnd?.();
     }, 120);
   };
   const onTouchStart = (event: TouchEvent) => {
@@ -522,7 +544,7 @@ function attachGestureHints(map: any, container: HTMLElement | null): () => void
     container?.removeEventListener('touchmove', onTouchMove);
     container?.removeEventListener('touchend', onTouchEnd);
     container?.removeEventListener('touchcancel', onEnd);
-    setMapGesturing(false);
+    setMapGesturing(map, false);
   };
 }
 
@@ -705,12 +727,14 @@ export function MapCanvas({
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [touchMap, setTouchMap] = useState(false);
+  const touchMapRef = useRef(false);
 
   const mapClickRef = useRef(onMapClick);
   mapClickRef.current = onMapClick;
   const pinClickRef = useRef(onPinClick);
   pinClickRef.current = onPinClick;
   const lastPinClickAtRef = useRef(0);
+  const gestureSettleRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -726,6 +750,7 @@ export function MapCanvas({
         pinLayoutRef.current = pinLayoutClass(ymaps);
 
         const touchMap = prefersTouchMap();
+        touchMapRef.current = touchMap;
         setTouchMap(touchMap);
 
         map = new ymaps.Map(
@@ -739,9 +764,8 @@ export function MapCanvas({
           {
             suppressMapOpenBlock: true,
             maxAnimationZoomDifference: 23,
-            // На телефоне дробный зум перерисовывает тайлы на каждом кадре щипка.
-            // Целые уровни: во время жеста GPU просто масштабирует текущие тайлы.
-            avoidFractionalZoom: touchMap,
+            // false = целые уровни зума: во время щипка GPU масштабирует тайлы, а не пересобирает карту.
+            avoidFractionalZoom: !touchMap,
             autoFitToViewport: false,
             yandexMapDisablePoiInteractivity: true,
           },
@@ -755,7 +779,8 @@ export function MapCanvas({
         }
         if (touchMap) {
           try {
-            map.behaviors.get('multiTouch')?.options.set({ tremor: 2 });
+            map.behaviors.get('multiTouch')?.options.set({ tremor: 1 });
+            map.behaviors.get('drag')?.options.set({ inertia: false });
           } catch {
             /* pinch останется со стандартной чувствительностью */
           }
@@ -814,7 +839,9 @@ export function MapCanvas({
         );
 
         mapRef.current = map;
-        detachGestures = attachGestureHints(map, containerRef.current);
+        detachGestures = attachGestureHints(map, containerRef.current, () => {
+          gestureSettleRef.current?.();
+        });
         if (import.meta.env.DEV) {
           detachDiag = attachTileDiagnostics(map, containerRef.current);
         }
@@ -852,6 +879,7 @@ export function MapCanvas({
       if (map) map.destroy();
       if (containerRef.current) containerRef.current.replaceChildren();
       mapRef.current = null;
+      touchMapRef.current = false;
       setTouchMap(false);
       setReady(false);
     };
@@ -877,6 +905,8 @@ export function MapCanvas({
     }
 
     const applyPins = () => {
+      if (document.body.classList.contains('map-gesturing')) return;
+      const rasterPins = touchMapRef.current;
       const fans = computePinFans(map, pins);
       const aliases = pinClickAliasRef.current;
       aliases.clear();
@@ -890,24 +920,42 @@ export function MapCanvas({
           fanClass: fan.interactive ? 'map-pin--fan-top' : 'map-pin--fan-under',
           fanStyle: `--fan-angle:${fan.angle}deg;--fan-x:${fan.x.toFixed(1)}px;--fan-y:${fan.y.toFixed(1)}px;`,
         };
-        const signature = `${pin.label}|${props.activeClass}|${props.fanClass}|${pin.lat}|${pin.lng}|${fan.angle}|${fan.x.toFixed(1)}|${fan.y.toFixed(1)}|${fan.clickId}|${fan.interactive}`;
+        const iconHref = rasterPins
+          ? touchPinIconUrl(pin.label, !!pin.active, fan.angle, fan.x, fan.y)
+          : '';
+        const signature = rasterPins
+          ? `${pin.label}|${pin.active ? 1 : 0}|${pin.lat}|${pin.lng}|${fan.angle}|${fan.x.toFixed(1)}|${fan.y.toFixed(1)}|${fan.clickId}|${fan.interactive}`
+          : `${pin.label}|${props.activeClass}|${props.fanClass}|${pin.lat}|${pin.lng}|${fan.angle}|${fan.x.toFixed(1)}|${fan.y.toFixed(1)}|${fan.clickId}|${fan.interactive}`;
 
         if (!placemark) {
-          placemark = new ymaps.Placemark([pin.lat, pin.lng], props, {
-            iconLayout: 'default#imageWithContent',
-            iconImageHref:
-              'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
-            iconImageSize: [PIN_W, PIN_H],
-            iconImageOffset: [-PIN_W / 2, -PIN_H],
-            iconContentOffset: [0, 0],
-            iconContentLayout: layout,
-            hasBalloon: false,
-            hasHint: false,
-            cursor: fan.interactive ? 'pointer' : 'default',
-            zIndex: fan.z,
-            zIndexHover: fan.z,
-            interactivityModel: fan.interactive ? 'default#opaque' : 'default#silent',
-          });
+          placemark = rasterPins
+            ? new ymaps.Placemark([pin.lat, pin.lng], {}, {
+                iconLayout: 'default#image',
+                iconImageHref: iconHref,
+                iconImageSize: [PIN_W, PIN_H],
+                iconImageOffset: [-PIN_W / 2, -PIN_H],
+                hasBalloon: false,
+                hasHint: false,
+                cursor: fan.interactive ? 'pointer' : 'default',
+                zIndex: fan.z,
+                zIndexHover: fan.z,
+                interactivityModel: fan.interactive ? 'default#opaque' : 'default#silent',
+              })
+            : new ymaps.Placemark([pin.lat, pin.lng], props, {
+                iconLayout: 'default#imageWithContent',
+                iconImageHref:
+                  'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+                iconImageSize: [PIN_W, PIN_H],
+                iconImageOffset: [-PIN_W / 2, -PIN_H],
+                iconContentOffset: [0, 0],
+                iconContentLayout: layout,
+                hasBalloon: false,
+                hasHint: false,
+                cursor: fan.interactive ? 'pointer' : 'default',
+                zIndex: fan.z,
+                zIndexHover: fan.z,
+                interactivityModel: fan.interactive ? 'default#opaque' : 'default#silent',
+              });
           const ownId = pin.id;
           placemark.events.add('click', (event: { stopPropagation: () => void }) => {
             event.stopPropagation();
@@ -919,14 +967,25 @@ export function MapCanvas({
           existing.set(pin.id, placemark);
         } else if (drawn.get(pin.id) !== signature) {
           placemark.geometry.setCoordinates([pin.lat, pin.lng]);
-          placemark.properties.set(props);
-          placemark.options.set({
-            iconImageOffset: [-PIN_W / 2, -PIN_H],
-            zIndex: fan.z,
-            zIndexHover: fan.z,
-            cursor: fan.interactive ? 'pointer' : 'default',
-            interactivityModel: fan.interactive ? 'default#opaque' : 'default#silent',
-          });
+          if (rasterPins) {
+            placemark.options.set({
+              iconImageHref: iconHref,
+              iconImageOffset: [-PIN_W / 2, -PIN_H],
+              zIndex: fan.z,
+              zIndexHover: fan.z,
+              cursor: fan.interactive ? 'pointer' : 'default',
+              interactivityModel: fan.interactive ? 'default#opaque' : 'default#silent',
+            });
+          } else {
+            placemark.properties.set(props);
+            placemark.options.set({
+              iconImageOffset: [-PIN_W / 2, -PIN_H],
+              zIndex: fan.z,
+              zIndexHover: fan.z,
+              cursor: fan.interactive ? 'pointer' : 'default',
+              interactivityModel: fan.interactive ? 'default#opaque' : 'default#silent',
+            });
+          }
         }
 
         drawn.set(pin.id, signature);
@@ -934,6 +993,7 @@ export function MapCanvas({
     };
 
     applyPins();
+    gestureSettleRef.current = applyPins;
 
     let settleTimer: number | null = null;
     const settleFan = () => {
@@ -956,6 +1016,7 @@ export function MapCanvas({
 
     return () => {
       if (settleTimer !== null) window.clearTimeout(settleTimer);
+      gestureSettleRef.current = null;
       map.events.remove('actionbegin', onActionBegin);
       map.events.remove('actionend', settleFan);
     };

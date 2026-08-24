@@ -207,6 +207,11 @@ body.map-gesturing .viewer__skip {
   touch-action: none;
 }
 
+.map-canvas--touch .map-canvas__map {
+  /* Отдельный композитный слой: меньше перерисовок UI поверх карты. */
+  isolation: isolate;
+}
+
 .map-canvas__map > div,
 .map-canvas__map [class*='ymaps-2-1-map'] {
   width: 100% !important;
