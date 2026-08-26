@@ -494,14 +494,30 @@ function setMapGesturing(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   map: any,
   gesturingRef: { current: boolean },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  placemarksRef: { current: Map<string, any> },
+  pinsDetachedRef: { current: boolean },
   on: boolean,
 ) {
   gesturingRef.current = on;
   document.body.classList.toggle('map-gesturing', on);
+  if (!map) return;
   try {
-    map?.geoObjects?.options?.set?.('visible', !on);
+    if (on) {
+      if (pinsDetachedRef.current) return;
+      for (const placemark of placemarksRef.current.values()) {
+        map.geoObjects.remove(placemark);
+      }
+      pinsDetachedRef.current = true;
+      return;
+    }
+    if (!pinsDetachedRef.current) return;
+    for (const placemark of placemarksRef.current.values()) {
+      map.geoObjects.add(placemark);
+    }
+    pinsDetachedRef.current = false;
   } catch {
-    /* пины останутся на месте */
+    pinsDetachedRef.current = false;
   }
 }
 
@@ -510,8 +526,11 @@ function setMapGesturing(
 function attachGestureHints(
   map: any,
   container: HTMLElement | null,
-  touchMap: boolean,
+  _touchMap: boolean,
   gesturingRef: { current: boolean },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  placemarksRef: { current: Map<string, any> },
+  pinsDetachedRef: { current: boolean },
   onGestureEnd?: () => void,
 ): () => void {
   let gesturing = false;
@@ -524,7 +543,7 @@ function attachGestureHints(
     }
     if (gesturing) return;
     gesturing = true;
-    setMapGesturing(map, gesturingRef, true);
+    setMapGesturing(map, gesturingRef, placemarksRef, pinsDetachedRef, true);
   };
 
   const endGesture = () => {
@@ -532,9 +551,9 @@ function attachGestureHints(
     endTimer = window.setTimeout(() => {
       endTimer = null;
       gesturing = false;
-      setMapGesturing(map, gesturingRef, false);
+      setMapGesturing(map, gesturingRef, placemarksRef, pinsDetachedRef, false);
       onGestureEnd?.();
-    }, 160);
+    }, 120);
   };
 
   const onTouchStart = (event: TouchEvent) => {
@@ -544,10 +563,7 @@ function attachGestureHints(
     if (event.touches.length < 2) endGesture();
   };
 
-  if (touchMap) {
-    map.events.add('actionbegin', beginGesture);
-    map.events.add('actionend', endGesture);
-  }
+  // На touch только щипок (2 пальца), не одиночный drag — иначе пины мигают при панорамировании.
   map.events.add('multitouchstart', beginGesture);
   map.events.add('multitouchend', endGesture);
   container?.addEventListener('touchstart', onTouchStart, { passive: true, capture: true });
@@ -556,10 +572,6 @@ function attachGestureHints(
 
   return () => {
     try {
-      if (touchMap) {
-        map.events.remove('actionbegin', beginGesture);
-        map.events.remove('actionend', endGesture);
-      }
       map.events.remove('multitouchstart', beginGesture);
       map.events.remove('multitouchend', endGesture);
     } catch {
@@ -570,7 +582,7 @@ function attachGestureHints(
     container?.removeEventListener('touchend', onTouchEnd, true);
     container?.removeEventListener('touchcancel', endGesture, true);
     gesturing = false;
-    setMapGesturing(map, gesturingRef, false);
+    setMapGesturing(map, gesturingRef, placemarksRef, pinsDetachedRef, false);
   };
 }
 
@@ -761,6 +773,7 @@ export function MapCanvas({
   pinClickRef.current = onPinClick;
   const lastPinClickAtRef = useRef(0);
   const gesturingRef = useRef(false);
+  const pinsDetachedRef = useRef(false);
   const gestureSettleRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -792,8 +805,8 @@ export function MapCanvas({
           {
             suppressMapOpenBlock: true,
             maxAnimationZoomDifference: 23,
-            // Дробный зум + скрытые пины во время жеста — плавный щипок без пересчёта меток.
-            avoidFractionalZoom: false,
+            // На touch целые уровни зума: GPU масштабирует тайлы, а не пересобирает слой каждый кадр.
+            avoidFractionalZoom: touchMap,
             autoFitToViewport: !touchMap,
             yandexMapDisablePoiInteractivity: true,
           },
@@ -871,6 +884,8 @@ export function MapCanvas({
           containerRef.current,
           touchMap,
           gesturingRef,
+          placemarksRef,
+          pinsDetachedRef,
           () => {
             gestureSettleRef.current?.();
           },
@@ -890,7 +905,10 @@ export function MapCanvas({
         if (!cancelled) setError(err.message);
       });
 
-    const handleResize = () => mapRef.current?.container.fitToViewport();
+    const handleResize = () => {
+      if (gesturingRef.current) return;
+      mapRef.current?.container.fitToViewport();
+    };
     window.addEventListener('resize', handleResize);
 
     return () => {
@@ -902,6 +920,7 @@ export function MapCanvas({
       readyWaitersRef.current.clear();
       placemarksRef.current.clear();
       pinStateRef.current.clear();
+      pinsDetachedRef.current = false;
       if (map) map.destroy();
       if (containerRef.current) containerRef.current.replaceChildren();
       mapRef.current = null;
@@ -1037,15 +1056,19 @@ export function MapCanvas({
       }
     };
 
-    // Не трогаем веер, пока палец/колёсико двигают карту — иначе анимация и углы дёргаются.
-    map.events.add('actionbegin', onActionBegin);
-    map.events.add('actionend', settleFan);
+    // На touch веер обновляется только после щипка (gestureSettleRef), не на каждый actionend.
+    if (!touchMapRef.current) {
+      map.events.add('actionbegin', onActionBegin);
+      map.events.add('actionend', settleFan);
+    }
 
     return () => {
       if (settleTimer !== null) window.clearTimeout(settleTimer);
       gestureSettleRef.current = null;
-      map.events.remove('actionbegin', onActionBegin);
-      map.events.remove('actionend', settleFan);
+      if (!touchMapRef.current) {
+        map.events.remove('actionbegin', onActionBegin);
+        map.events.remove('actionend', settleFan);
+      }
     };
   }, [pins, ready]);
 

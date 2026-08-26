@@ -75,12 +75,6 @@ body.map-gesturing::after {
   display: none;
 }
 
-body.map-gesturing [class*='places-pane'],
-body.map-gesturing [class*='overlaps-pane'],
-body.map-gesturing [class*='shadows-pane'] {
-  display: none !important;
-}
-
 body.map-gesturing .map-canvas__tint,
 body.map-gesturing .builder__header,
 body.map-gesturing .builder__dock,
@@ -89,7 +83,8 @@ body.map-gesturing .viewer__caption,
 body.map-gesturing .viewer__explore-hint,
 body.map-gesturing .viewer__nudge,
 body.map-gesturing .viewer__skip {
-  display: none;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 @media (pointer: coarse) {
@@ -241,7 +236,6 @@ html.is-touch-map [class*='ymaps-2-1-gototech'] {
 }
 
 .map-canvas--touch .map-canvas__map {
-  contain: strict;
   isolation: isolate;
 }
 
