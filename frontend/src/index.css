@@ -75,15 +75,10 @@ body.map-gesturing::after {
   display: none;
 }
 
-/* Во время щипка оставляем только слой тайлов — без пинов, панелей и copyright. */
-body.map-gesturing .map-pin,
-body.map-gesturing [class*="places-pane"],
-body.map-gesturing [class*="overlaps-pane"],
-body.map-gesturing [class*="shadows-pane"],
-body.map-gesturing [class*="hotspot-pane"],
-body.map-gesturing [class*="copyrights-pane"],
-body.map-gesturing [class*="controls-pane"] {
-  visibility: hidden !important;
+body.map-gesturing [class*='places-pane'],
+body.map-gesturing [class*='overlaps-pane'],
+body.map-gesturing [class*='shadows-pane'] {
+  display: none !important;
 }
 
 body.map-gesturing .map-canvas__tint,
@@ -94,8 +89,7 @@ body.map-gesturing .viewer__caption,
 body.map-gesturing .viewer__explore-hint,
 body.map-gesturing .viewer__nudge,
 body.map-gesturing .viewer__skip {
-  visibility: hidden;
-  pointer-events: none;
+  display: none;
 }
 
 @media (pointer: coarse) {
@@ -104,15 +98,14 @@ body.map-gesturing .viewer__skip {
   }
 
   .builder__header,
-  .builder__dock,
+  .builder__dock .btn,
   .btn--ghost,
-  .viewer__topbar,
   .viewer__nudge,
   .viewer__caption,
   .viewer__explore-hint,
-  .viewer__skip {
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
+  .viewer__topbar {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   .map-canvas__tint {
@@ -124,11 +117,51 @@ body.map-gesturing .viewer__skip {
   }
 }
 
+/* Telegram WebView часто не даёт pointer: coarse — дублируем по классу с JS. */
+html.is-touch-map body::after {
+  display: none;
+}
+
+html.is-touch-map .builder__header,
+html.is-touch-map .builder__dock .btn,
+html.is-touch-map .btn--ghost,
+html.is-touch-map .viewer__nudge,
+html.is-touch-map .viewer__caption,
+html.is-touch-map .viewer__explore-hint,
+html.is-touch-map .viewer__topbar {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html.is-touch-map .map-canvas__tint {
+  display: none;
+}
+
+html.is-touch-map .map-pin__shadow {
+  filter: none;
+}
+
+html.is-touch-map [class*='ymaps-2-1-copyrights-pane'],
+html.is-touch-map [class*='ymaps-2-1-copyright'],
+html.is-touch-map [class*='ymaps-2-1-gototech'] {
+  display: none !important;
+}
+
 .app,
 .screen {
   position: absolute;
   inset: 0;
   overflow: hidden;
+}
+
+.app,
+.screen,
+.builder,
+.viewer {
+  transform: none !important;
+  filter: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 /* ============ Кнопки ============ */
@@ -205,11 +238,6 @@ body.map-gesturing .viewer__skip {
   inset: 0;
   /* Без filter/transform: иначе Яндекс не может двигать тайлы на своём слое. */
   touch-action: none;
-}
-
-.map-canvas--touch .map-canvas__map {
-  /* Отдельный композитный слой: меньше перерисовок UI поверх карты. */
-  isolation: isolate;
 }
 
 .map-canvas__map > div,

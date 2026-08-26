@@ -22,10 +22,11 @@ interface ViewerExperienceProps {
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const TOUR_STAGE_HOLD_MS = 1000;
 const WIDE_ZOOM = 10;
 const CLOSE_ZOOM = 15;
-const HOLD_WIDE_MS = 1000;
-const HOLD_AFTER_ARRIVE_MS = 1400;
+const HOLD_WIDE_MS = TOUR_STAGE_HOLD_MS;
+const HOLD_AFTER_ARRIVE_MS = TOUR_STAGE_HOLD_MS;
 
 /**
  * Экран получателя: интро → по очереди подлёт к месту и карточка → свободная карта.

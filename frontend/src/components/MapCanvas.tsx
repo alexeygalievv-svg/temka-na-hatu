@@ -31,9 +31,8 @@ interface MapCanvasProps {
 /** Размеры пина — должны совпадать с CSS и iconImageOffset. */
 const PIN_W = 40;
 const PIN_H = 42;
-/** 1px на округление проекции: веер только если иконка целиком под другой. */
-const PIN_COVER_TOL = 1;
-const PIN_ICON_CACHE = new Map<string, string>();
+/** 3px на округление проекции: веер только если иконка целиком под другой. */
+const PIN_COVER_TOL = 3;
 
 type PinItem = { pin: MapPin; px: number; py: number };
 type PinAabb = { left: number; right: number; top: number; bottom: number };
@@ -42,10 +41,27 @@ type PinFan = { angle: number; x: number; y: number; z: number; clickId: string;
 function prefersTouchMap(): boolean {
   if (typeof window === 'undefined') return false;
   return (
+    navigator.maxTouchPoints > 0 ||
     window.matchMedia('(pointer: coarse)').matches ||
     window.matchMedia('(hover: none)').matches ||
     'ontouchstart' in window
   );
+}
+
+function markTouchUi() {
+  if (prefersTouchMap()) document.documentElement.classList.add('is-touch-map');
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function setOverlayPanesVisible(map: any, visible: boolean) {
+  for (const name of ['places', 'overlaps', 'shadows', 'copyrights', 'outerBalloon']) {
+    try {
+      const el = map.panes?.get?.(name)?.getElement?.() as HTMLElement | undefined;
+      if (el) el.style.display = visible ? '' : 'none';
+    } catch {
+      /* панель может отсутствовать */
+    }
+  }
 }
 
 function pinAabb(px: number, py: number): PinAabb {
@@ -223,7 +239,7 @@ const TILE_SIZE = 256;
 const PRELOAD_TIMEOUT_MS = 4000;
 const PRELOAD_MAX_TILES = 96;
 const FIRST_TILES_TIMEOUT_MS = 5000;
-const OVERVIEW_HOLD_MS = 1600;
+const FLIGHT_STAGE_HOLD_MS = 1000;
 
 const sleep = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 
@@ -325,7 +341,7 @@ function isNearbyFlight(map: any, from: [number, number], to: [number, number], 
   return pixelDistance(map, from, to, zoom) < 2 * Math.max(size[0], size[1]);
 }
 
-/** Обзор, в который помещаются обе точки — отсюда камера потом приближает. */
+/** Широкий зум, на котором камера едет к следующей точке. */
 function overviewForFlight(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ymaps: any,
@@ -472,78 +488,61 @@ function attachTileDiagnostics(map: any, container: HTMLElement | null): () => v
   };
 }
 
-function touchPinIconUrl(label: string, active: boolean, angle: number, fanX: number, fanY: number): string {
-  const key = `${label}|${active}|${angle}|${fanX}|${fanY}`;
-  const cached = PIN_ICON_CACHE.get(key);
-  if (cached) return cached;
-  const scale = active ? 1.16 : 1;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="42" viewBox="0 0 40 42"><g transform="translate(${20 + fanX} ${42 + fanY}) rotate(${angle}) scale(${scale}) translate(-20 -42)"><path d="M20 37 C20 37 5 25.5 5 15.5 C5 9.5 9.5 5 15.5 5 C18.5 5 20.5 7 20 9.5 C19.5 7 21.5 5 24.5 5 C30.5 5 35 9.5 35 15.5 C35 25.5 20 37 20 37 Z" fill="#c25932" stroke="#fff7ec" stroke-width="2.2"/><text x="20" y="19.5" text-anchor="middle" dominant-baseline="middle" fill="#fff7ec" font-family="Georgia, serif" font-weight="700" font-size="15">${label}</text></g></svg>`;
-  const url = `data:image/svg+xml,${encodeURIComponent(svg)}`;
-  PIN_ICON_CACHE.set(key, url);
-  return url;
-}
-
-function setMapGesturing(map: { geoObjects?: { options?: { set?: (key: string, value: boolean) => void } } }, on: boolean) {
+function setMapGesturing(map: unknown, on: boolean) {
   document.body.classList.toggle('map-gesturing', on);
-  try {
-    map.geoObjects?.options?.set?.('visible', !on);
-  } catch {
-    /* пины останутся на месте */
-  }
+  setOverlayPanesVisible(map, !on);
 }
 
-/** На телефоне сразу гасим оверлеи и пины — иначе щипок рвётся. */
+/** На телефоне гасим HTML-пины до первого кадра щипка — иначе карта рисует их каждый кадр. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function attachGestureHints(
-  map: any,
-  container: HTMLElement | null,
-  onGestureEnd?: () => void,
-): () => void {
+function attachGestureHints(map: any, container: HTMLElement | null): () => void {
+  let pinching = false;
   let endTimer: number | null = null;
-  const onBegin = () => {
+
+  const beginPinch = () => {
     if (endTimer !== null) {
       window.clearTimeout(endTimer);
       endTimer = null;
     }
+    if (pinching) return;
+    pinching = true;
     setMapGesturing(map, true);
   };
-  const onEnd = () => {
+
+  const endPinch = () => {
     if (endTimer !== null) window.clearTimeout(endTimer);
     endTimer = window.setTimeout(() => {
       endTimer = null;
+      pinching = false;
       setMapGesturing(map, false);
-      onGestureEnd?.();
-    }, 120);
-  };
-  const onTouchStart = (event: TouchEvent) => {
-    if (event.touches.length >= 2) onBegin();
-  };
-  const onTouchMove = (event: TouchEvent) => {
-    if (event.touches.length >= 2) onBegin();
-  };
-  const onTouchEnd = (event: TouchEvent) => {
-    if (event.touches.length < 2) onEnd();
+    }, 80);
   };
 
-  map.events.add('multitouchstart', onBegin);
-  map.events.add('multitouchend', onEnd);
-  container?.addEventListener('touchstart', onTouchStart, { passive: true });
-  container?.addEventListener('touchmove', onTouchMove, { passive: true });
-  container?.addEventListener('touchend', onTouchEnd, { passive: true });
-  container?.addEventListener('touchcancel', onEnd, { passive: true });
+  const onTouchStart = (event: TouchEvent) => {
+    if (event.touches.length >= 2) beginPinch();
+  };
+  const onTouchEnd = (event: TouchEvent) => {
+    if (event.touches.length < 2) endPinch();
+  };
+
+  map.events.add('multitouchstart', beginPinch);
+  map.events.add('multitouchend', endPinch);
+  container?.addEventListener('touchstart', onTouchStart, { passive: true, capture: true });
+  container?.addEventListener('touchend', onTouchEnd, { passive: true, capture: true });
+  container?.addEventListener('touchcancel', endPinch, { passive: true, capture: true });
 
   return () => {
     try {
-      map.events.remove('multitouchstart', onBegin);
-      map.events.remove('multitouchend', onEnd);
+      map.events.remove('multitouchstart', beginPinch);
+      map.events.remove('multitouchend', endPinch);
     } catch {
       /* destroy */
     }
     if (endTimer !== null) window.clearTimeout(endTimer);
-    container?.removeEventListener('touchstart', onTouchStart);
-    container?.removeEventListener('touchmove', onTouchMove);
-    container?.removeEventListener('touchend', onTouchEnd);
-    container?.removeEventListener('touchcancel', onEnd);
+    container?.removeEventListener('touchstart', onTouchStart, true);
+    container?.removeEventListener('touchend', onTouchEnd, true);
+    container?.removeEventListener('touchcancel', endPinch, true);
+    pinching = false;
     setMapGesturing(map, false);
   };
 }
@@ -727,14 +726,12 @@ export function MapCanvas({
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [touchMap, setTouchMap] = useState(false);
-  const touchMapRef = useRef(false);
 
   const mapClickRef = useRef(onMapClick);
   mapClickRef.current = onMapClick;
   const pinClickRef = useRef(onPinClick);
   pinClickRef.current = onPinClick;
   const lastPinClickAtRef = useRef(0);
-  const gestureSettleRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -750,7 +747,7 @@ export function MapCanvas({
         pinLayoutRef.current = pinLayoutClass(ymaps);
 
         const touchMap = prefersTouchMap();
-        touchMapRef.current = touchMap;
+        markTouchUi();
         setTouchMap(touchMap);
 
         map = new ymaps.Map(
@@ -764,9 +761,8 @@ export function MapCanvas({
           {
             suppressMapOpenBlock: true,
             maxAnimationZoomDifference: 23,
-            // false = целые уровни зума: во время щипка GPU масштабирует тайлы, а не пересобирает карту.
-            avoidFractionalZoom: !touchMap,
-            autoFitToViewport: false,
+            // На телефоне дробный зум при щипке — иначе зум «ступеньками».
+            avoidFractionalZoom: false,
             yandexMapDisablePoiInteractivity: true,
           },
         );
@@ -779,8 +775,7 @@ export function MapCanvas({
         }
         if (touchMap) {
           try {
-            map.behaviors.get('multiTouch')?.options.set({ tremor: 1 });
-            map.behaviors.get('drag')?.options.set({ inertia: false });
+            map.behaviors.get('multiTouch')?.options.set({ tremor: 8 });
           } catch {
             /* pinch останется со стандартной чувствительностью */
           }
@@ -839,13 +834,14 @@ export function MapCanvas({
         );
 
         mapRef.current = map;
-        detachGestures = attachGestureHints(map, containerRef.current, () => {
-          gestureSettleRef.current?.();
-        });
-        if (import.meta.env.DEV) {
+        detachGestures = attachGestureHints(map, containerRef.current);
+        if (import.meta.env.DEV && !touchMap) {
           detachDiag = attachTileDiagnostics(map, containerRef.current);
         }
+        // Родительский Screen входит через transform/scale. После окончания
+        // перехода Яндексу нужно повторно измерить настоящий viewport.
         window.requestAnimationFrame(() => map?.container.fitToViewport());
+        window.setTimeout(() => map?.container.fitToViewport(), 550);
         readyWaitersRef.current.forEach((resolve) => resolve());
         readyWaitersRef.current.clear();
         setReady(true);
@@ -854,21 +850,11 @@ export function MapCanvas({
         if (!cancelled) setError(err.message);
       });
 
-    let resizeTimer: number | null = null;
-    const handleResize = () => {
-      if (document.body.classList.contains('map-gesturing')) return;
-      if (resizeTimer !== null) window.clearTimeout(resizeTimer);
-      resizeTimer = window.setTimeout(() => {
-        resizeTimer = null;
-        if (document.body.classList.contains('map-gesturing')) return;
-        mapRef.current?.container.fitToViewport();
-      }, 220);
-    };
+    const handleResize = () => mapRef.current?.container.fitToViewport();
     window.addEventListener('resize', handleResize);
 
     return () => {
       cancelled = true;
-      if (resizeTimer !== null) window.clearTimeout(resizeTimer);
       window.removeEventListener('resize', handleResize);
       detachGestures?.();
       detachDiag?.();
@@ -879,7 +865,6 @@ export function MapCanvas({
       if (map) map.destroy();
       if (containerRef.current) containerRef.current.replaceChildren();
       mapRef.current = null;
-      touchMapRef.current = false;
       setTouchMap(false);
       setReady(false);
     };
@@ -905,8 +890,6 @@ export function MapCanvas({
     }
 
     const applyPins = () => {
-      if (document.body.classList.contains('map-gesturing')) return;
-      const rasterPins = touchMapRef.current;
       const fans = computePinFans(map, pins);
       const aliases = pinClickAliasRef.current;
       aliases.clear();
@@ -920,42 +903,24 @@ export function MapCanvas({
           fanClass: fan.interactive ? 'map-pin--fan-top' : 'map-pin--fan-under',
           fanStyle: `--fan-angle:${fan.angle}deg;--fan-x:${fan.x.toFixed(1)}px;--fan-y:${fan.y.toFixed(1)}px;`,
         };
-        const iconHref = rasterPins
-          ? touchPinIconUrl(pin.label, !!pin.active, fan.angle, fan.x, fan.y)
-          : '';
-        const signature = rasterPins
-          ? `${pin.label}|${pin.active ? 1 : 0}|${pin.lat}|${pin.lng}|${fan.angle}|${fan.x.toFixed(1)}|${fan.y.toFixed(1)}|${fan.clickId}|${fan.interactive}`
-          : `${pin.label}|${props.activeClass}|${props.fanClass}|${pin.lat}|${pin.lng}|${fan.angle}|${fan.x.toFixed(1)}|${fan.y.toFixed(1)}|${fan.clickId}|${fan.interactive}`;
+        const signature = `${pin.label}|${props.activeClass}|${props.fanClass}|${pin.lat}|${pin.lng}|${fan.angle}|${fan.x.toFixed(1)}|${fan.y.toFixed(1)}|${fan.clickId}|${fan.interactive}`;
 
         if (!placemark) {
-          placemark = rasterPins
-            ? new ymaps.Placemark([pin.lat, pin.lng], {}, {
-                iconLayout: 'default#image',
-                iconImageHref: iconHref,
-                iconImageSize: [PIN_W, PIN_H],
-                iconImageOffset: [-PIN_W / 2, -PIN_H],
-                hasBalloon: false,
-                hasHint: false,
-                cursor: fan.interactive ? 'pointer' : 'default',
-                zIndex: fan.z,
-                zIndexHover: fan.z,
-                interactivityModel: fan.interactive ? 'default#opaque' : 'default#silent',
-              })
-            : new ymaps.Placemark([pin.lat, pin.lng], props, {
-                iconLayout: 'default#imageWithContent',
-                iconImageHref:
-                  'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
-                iconImageSize: [PIN_W, PIN_H],
-                iconImageOffset: [-PIN_W / 2, -PIN_H],
-                iconContentOffset: [0, 0],
-                iconContentLayout: layout,
-                hasBalloon: false,
-                hasHint: false,
-                cursor: fan.interactive ? 'pointer' : 'default',
-                zIndex: fan.z,
-                zIndexHover: fan.z,
-                interactivityModel: fan.interactive ? 'default#opaque' : 'default#silent',
-              });
+          placemark = new ymaps.Placemark([pin.lat, pin.lng], props, {
+            iconLayout: 'default#imageWithContent',
+            iconImageHref:
+              'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+            iconImageSize: [PIN_W, PIN_H],
+            iconImageOffset: [-PIN_W / 2, -PIN_H],
+            iconContentOffset: [0, 0],
+            iconContentLayout: layout,
+            hasBalloon: false,
+            hasHint: false,
+            cursor: fan.interactive ? 'pointer' : 'default',
+            zIndex: fan.z,
+            zIndexHover: fan.z,
+            interactivityModel: fan.interactive ? 'default#opaque' : 'default#silent',
+          });
           const ownId = pin.id;
           placemark.events.add('click', (event: { stopPropagation: () => void }) => {
             event.stopPropagation();
@@ -967,25 +932,14 @@ export function MapCanvas({
           existing.set(pin.id, placemark);
         } else if (drawn.get(pin.id) !== signature) {
           placemark.geometry.setCoordinates([pin.lat, pin.lng]);
-          if (rasterPins) {
-            placemark.options.set({
-              iconImageHref: iconHref,
-              iconImageOffset: [-PIN_W / 2, -PIN_H],
-              zIndex: fan.z,
-              zIndexHover: fan.z,
-              cursor: fan.interactive ? 'pointer' : 'default',
-              interactivityModel: fan.interactive ? 'default#opaque' : 'default#silent',
-            });
-          } else {
-            placemark.properties.set(props);
-            placemark.options.set({
-              iconImageOffset: [-PIN_W / 2, -PIN_H],
-              zIndex: fan.z,
-              zIndexHover: fan.z,
-              cursor: fan.interactive ? 'pointer' : 'default',
-              interactivityModel: fan.interactive ? 'default#opaque' : 'default#silent',
-            });
-          }
+          placemark.properties.set(props);
+          placemark.options.set({
+            iconImageOffset: [-PIN_W / 2, -PIN_H],
+            zIndex: fan.z,
+            zIndexHover: fan.z,
+            cursor: fan.interactive ? 'pointer' : 'default',
+            interactivityModel: fan.interactive ? 'default#opaque' : 'default#silent',
+          });
         }
 
         drawn.set(pin.id, signature);
@@ -993,7 +947,6 @@ export function MapCanvas({
     };
 
     applyPins();
-    gestureSettleRef.current = applyPins;
 
     let settleTimer: number | null = null;
     const settleFan = () => {
@@ -1016,7 +969,6 @@ export function MapCanvas({
 
     return () => {
       if (settleTimer !== null) window.clearTimeout(settleTimer);
-      gestureSettleRef.current = null;
       map.events.remove('actionbegin', onActionBegin);
       map.events.remove('actionend', settleFan);
     };
@@ -1210,27 +1162,46 @@ export function MapCanvas({
             return;
           }
 
-          // Далеко: отъезд на обзор → ждём тайлы → подлёт к точке.
-          // Штатный panTo.flying на очень длинных дистанциях срывается.
+          // Далеко: расширение на месте → перелёт на широком зуме → приближение к точке.
           const overview = ymaps
             ? overviewForFlight(ymaps, map, from, dest, fromZoom, targetZoom)
             : { center: dest, zoom: Math.max(3, targetZoom - 6) };
-          const outMs = Math.max(900, Math.round(animDuration * 0.6));
-          const inMs = Math.max(1000, Math.round(animDuration * 0.75));
+          const wideZoom = overview.zoom;
+          const outMs = Math.max(700, Math.round(animDuration * 0.35));
+          const panMs = Math.max(900, Math.round(animDuration * 0.5));
+          const inMs = Math.max(1000, Math.round(animDuration * 0.55));
 
-          logTile('FLY_OUT', { overview, outMs });
+          if (fromZoom > wideZoom + 0.2) {
+            logTile('FLY_OUT', { center: from, zoom: wideZoom, outMs });
+            await waitForAnimation(
+              map.setCenter(from, wideZoom, {
+                duration: outMs,
+                timingFunction: 'ease-in-out',
+              }),
+              outMs,
+            );
+            if (!stillFlying()) return;
+            await waitForVisibleTiles(map, 6000);
+            if (!stillFlying()) return;
+            logTile('FLY_OUT_READY', { zoom: map.getZoom?.(), center: map.getCenter?.() });
+            await sleep(FLIGHT_STAGE_HOLD_MS);
+            if (!stillFlying()) return;
+          }
+
+          logTile('FLY_PAN', { dest, zoom: wideZoom, panMs });
           await waitForAnimation(
-            map.setCenter(overview.center, overview.zoom, {
-              duration: outMs,
+            map.panTo(dest, {
+              duration: panMs,
               timingFunction: 'ease-in-out',
+              flying: false,
+              safe: false,
             }),
-            outMs,
+            panMs,
           );
           if (!stillFlying()) return;
           await waitForVisibleTiles(map, 8000);
           if (!stillFlying()) return;
-          logTile('FLY_OUT_READY', { zoom: map.getZoom?.(), center: map.getCenter?.() });
-          await sleep(OVERVIEW_HOLD_MS);
+          await sleep(FLIGHT_STAGE_HOLD_MS);
           if (!stillFlying()) return;
 
           logTile('FLY_IN', { dest, zoom: targetZoom, inMs });

@@ -18,6 +18,7 @@ type Route =
   | { name: 'viewer'; mapId: string };
 
 function Screen({ children }: { children: ReactNode }) {
+  // Без transform/opacity-слоя Framer Motion: иначе pinch Яндекса на телефоне падает до нескольких FPS.
   return <div className="screen">{children}</div>;
 }
 
