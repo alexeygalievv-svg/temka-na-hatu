@@ -490,66 +490,87 @@ function attachTileDiagnostics(map: any, container: HTMLElement | null): () => v
   };
 }
 
-function setMapGesturing(on: boolean) {
+function setMapGesturing(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  map: any,
+  gesturingRef: { current: boolean },
+  on: boolean,
+) {
+  gesturingRef.current = on;
   document.body.classList.toggle('map-gesturing', on);
+  try {
+    map?.geoObjects?.options?.set?.('visible', !on);
+  } catch {
+    /* пины останутся на месте */
+  }
 }
 
-/** На телефоне гасим HTML-пины до первого кадра щипка — иначе карта рисует их каждый кадр. */
+/** На телефоне убираем пины и оверлеи на время любого жеста — иначе щипок рвётся. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function attachGestureHints(
   map: any,
   container: HTMLElement | null,
+  touchMap: boolean,
+  gesturingRef: { current: boolean },
   onGestureEnd?: () => void,
 ): () => void {
-  let pinching = false;
+  let gesturing = false;
   let endTimer: number | null = null;
 
-  const beginPinch = () => {
+  const beginGesture = () => {
     if (endTimer !== null) {
       window.clearTimeout(endTimer);
       endTimer = null;
     }
-    if (pinching) return;
-    pinching = true;
-    setMapGesturing(true);
+    if (gesturing) return;
+    gesturing = true;
+    setMapGesturing(map, gesturingRef, true);
   };
 
-  const endPinch = () => {
+  const endGesture = () => {
     if (endTimer !== null) window.clearTimeout(endTimer);
     endTimer = window.setTimeout(() => {
       endTimer = null;
-      pinching = false;
-      setMapGesturing(false);
+      gesturing = false;
+      setMapGesturing(map, gesturingRef, false);
       onGestureEnd?.();
-    }, 120);
+    }, 160);
   };
 
   const onTouchStart = (event: TouchEvent) => {
-    if (event.touches.length >= 2) beginPinch();
+    if (event.touches.length >= 2) beginGesture();
   };
   const onTouchEnd = (event: TouchEvent) => {
-    if (event.touches.length < 2) endPinch();
+    if (event.touches.length < 2) endGesture();
   };
 
-  map.events.add('multitouchstart', beginPinch);
-  map.events.add('multitouchend', endPinch);
+  if (touchMap) {
+    map.events.add('actionbegin', beginGesture);
+    map.events.add('actionend', endGesture);
+  }
+  map.events.add('multitouchstart', beginGesture);
+  map.events.add('multitouchend', endGesture);
   container?.addEventListener('touchstart', onTouchStart, { passive: true, capture: true });
   container?.addEventListener('touchend', onTouchEnd, { passive: true, capture: true });
-  container?.addEventListener('touchcancel', endPinch, { passive: true, capture: true });
+  container?.addEventListener('touchcancel', endGesture, { passive: true, capture: true });
 
   return () => {
     try {
-      map.events.remove('multitouchstart', beginPinch);
-      map.events.remove('multitouchend', endPinch);
+      if (touchMap) {
+        map.events.remove('actionbegin', beginGesture);
+        map.events.remove('actionend', endGesture);
+      }
+      map.events.remove('multitouchstart', beginGesture);
+      map.events.remove('multitouchend', endGesture);
     } catch {
       /* destroy */
     }
     if (endTimer !== null) window.clearTimeout(endTimer);
     container?.removeEventListener('touchstart', onTouchStart, true);
     container?.removeEventListener('touchend', onTouchEnd, true);
-    container?.removeEventListener('touchcancel', endPinch, true);
-    pinching = false;
-    setMapGesturing(false);
+    container?.removeEventListener('touchcancel', endGesture, true);
+    gesturing = false;
+    setMapGesturing(map, gesturingRef, false);
   };
 }
 
@@ -739,6 +760,7 @@ export function MapCanvas({
   const pinClickRef = useRef(onPinClick);
   pinClickRef.current = onPinClick;
   const lastPinClickAtRef = useRef(0);
+  const gesturingRef = useRef(false);
   const gestureSettleRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -770,8 +792,8 @@ export function MapCanvas({
           {
             suppressMapOpenBlock: true,
             maxAnimationZoomDifference: 23,
-            // На телефоне целые уровни зума: GPU масштабирует тайлы, а не пересобирает карту каждый кадр.
-            avoidFractionalZoom: touchMap,
+            // Дробный зум + скрытые пины во время жеста — плавный щипок без пересчёта меток.
+            avoidFractionalZoom: false,
             autoFitToViewport: !touchMap,
             yandexMapDisablePoiInteractivity: true,
           },
@@ -844,9 +866,15 @@ export function MapCanvas({
         );
 
         mapRef.current = map;
-        detachGestures = attachGestureHints(map, containerRef.current, () => {
-          gestureSettleRef.current?.();
-        });
+        detachGestures = attachGestureHints(
+          map,
+          containerRef.current,
+          touchMap,
+          gesturingRef,
+          () => {
+            gestureSettleRef.current?.();
+          },
+        );
         if (import.meta.env.DEV && !touchMap) {
           detachDiag = attachTileDiagnostics(map, containerRef.current);
         }
@@ -903,6 +931,7 @@ export function MapCanvas({
     }
 
     const applyPins = () => {
+      if (gesturingRef.current) return;
       const rasterPins = touchMapRef.current;
       const fans = computePinFans(map, pins);
       const aliases = pinClickAliasRef.current;
@@ -989,16 +1018,18 @@ export function MapCanvas({
     };
 
     applyPins();
-    gestureSettleRef.current = applyPins;
 
     let settleTimer: number | null = null;
     const settleFan = () => {
+      if (gesturingRef.current) return;
       if (settleTimer !== null) window.clearTimeout(settleTimer);
       settleTimer = window.setTimeout(() => {
         settleTimer = null;
         applyPins();
       }, 420);
     };
+    gestureSettleRef.current = applyPins;
+
     const onActionBegin = () => {
       if (settleTimer !== null) {
         window.clearTimeout(settleTimer);

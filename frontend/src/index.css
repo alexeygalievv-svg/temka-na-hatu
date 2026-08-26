@@ -240,6 +240,11 @@ html.is-touch-map [class*='ymaps-2-1-gototech'] {
   touch-action: none;
 }
 
+.map-canvas--touch .map-canvas__map {
+  contain: strict;
+  isolation: isolate;
+}
+
 .map-canvas__map > div,
 .map-canvas__map [class*='ymaps-2-1-map'] {
   width: 100% !important;
