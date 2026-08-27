@@ -76,6 +76,7 @@ body.map-gesturing::after {
 }
 
 body.map-gesturing .map-canvas__tint,
+body.map-gesturing .map-canvas__pins,
 body.map-gesturing .builder__header,
 body.map-gesturing .builder__dock,
 body.map-gesturing .viewer__topbar,
@@ -237,6 +238,30 @@ html.is-touch-map [class*='ymaps-2-1-gototech'] {
 
 .map-canvas--touch .map-canvas__map {
   isolation: isolate;
+}
+
+.map-canvas__pins {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.map-canvas__pin-slot {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+}
+
+.map-canvas__pin-slot .map-pin {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .map-canvas__map > div,

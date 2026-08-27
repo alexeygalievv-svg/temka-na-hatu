@@ -1,4 +1,4 @@
-import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
+import { useEffect, useImperativeHandle, useRef, useState, type CSSProperties, type Ref } from 'react';
 import { loadYmaps } from '../lib/ymaps';
 
 export interface MapPin {
@@ -33,13 +33,35 @@ const PIN_W = 40;
 const PIN_H = 42;
 /** 3px на округление проекции: веер только если иконка целиком под другой. */
 const PIN_COVER_TOL = 3;
-const PIN_ICON_CACHE = new Map<string, string>();
 const EMPTY_PIXEL =
   'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 
 type PinItem = { pin: MapPin; px: number; py: number };
 type PinAabb = { left: number; right: number; top: number; bottom: number };
 type PinFan = { angle: number; x: number; y: number; z: number; clickId: string; interactive: boolean };
+
+type TouchPinView = {
+  id: string;
+  label: string;
+  active: boolean;
+  x: number;
+  y: number;
+  angle: number;
+  fanX: number;
+  fanY: number;
+  zIndex: number;
+  clickId: string;
+  interactive: boolean;
+};
+
+const DEFAULT_PIN_FAN: PinFan = {
+  angle: 0,
+  x: 0,
+  y: 0,
+  z: 1000,
+  clickId: '',
+  interactive: true,
+};
 
 function prefersTouchMap(): boolean {
   if (typeof window === 'undefined') return false;
@@ -55,15 +77,26 @@ function markTouchUi() {
   if (prefersTouchMap()) document.documentElement.classList.add('is-touch-map');
 }
 
-function touchPinIconUrl(label: string, active: boolean, angle: number, fanX: number, fanY: number): string {
-  const key = `${label}|${active}|${angle}|${fanX}|${fanY}`;
-  const cached = PIN_ICON_CACHE.get(key);
-  if (cached) return cached;
-  const scale = active ? 1.16 : 1;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="42" viewBox="0 0 40 42"><g transform="translate(${20 + fanX} ${42 + fanY}) rotate(${angle}) scale(${scale}) translate(-20 -42)"><path d="M20 37 C20 37 5 25.5 5 15.5 C5 9.5 9.5 5 15.5 5 C18.5 5 20.5 7 20 9.5 C19.5 7 21.5 5 24.5 5 C30.5 5 35 9.5 35 15.5 C35 25.5 20 37 20 37 Z" fill="#c25932" stroke="#fff7ec" stroke-width="2.2"/><text x="20" y="19.5" text-anchor="middle" dominant-baseline="middle" fill="#fff7ec" font-family="Georgia, serif" font-weight="700" font-size="15">${label}</text></g></svg>`;
-  const url = `data:image/svg+xml,${encodeURIComponent(svg)}`;
-  PIN_ICON_CACHE.set(key, url);
-  return url;
+function screenPinPosition(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  map: any,
+  lat: number,
+  lng: number,
+): { x: number; y: number } | null {
+  try {
+    const zoom = Number(map.getZoom?.() ?? 10);
+    const projection = map.options.get('projection');
+    const center = map.getCenter() as [number, number];
+    const size = map.container.getSize() as [number, number];
+    const [cx, cy] = projection.toGlobalPixels(center, zoom) as [number, number];
+    const [px, py] = projection.toGlobalPixels([lat, lng], zoom) as [number, number];
+    return {
+      x: size[0] / 2 + (px - cx),
+      y: size[1] / 2 + (py - cy),
+    };
+  } catch {
+    return null;
+  }
 }
 
 function pinAabb(px: number, py: number): PinAabb {
@@ -490,47 +523,18 @@ function attachTileDiagnostics(map: any, container: HTMLElement | null): () => v
   };
 }
 
-function setMapGesturing(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  map: any,
-  gesturingRef: { current: boolean },
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  placemarksRef: { current: Map<string, any> },
-  pinsDetachedRef: { current: boolean },
-  on: boolean,
-) {
+function setMapGesturing(gesturingRef: { current: boolean }, on: boolean) {
   gesturingRef.current = on;
   document.body.classList.toggle('map-gesturing', on);
-  if (!map) return;
-  try {
-    if (on) {
-      if (pinsDetachedRef.current) return;
-      for (const placemark of placemarksRef.current.values()) {
-        map.geoObjects.remove(placemark);
-      }
-      pinsDetachedRef.current = true;
-      return;
-    }
-    if (!pinsDetachedRef.current) return;
-    for (const placemark of placemarksRef.current.values()) {
-      map.geoObjects.add(placemark);
-    }
-    pinsDetachedRef.current = false;
-  } catch {
-    pinsDetachedRef.current = false;
-  }
 }
 
-/** На телефоне убираем пины и оверлеи на время любого жеста — иначе щипок рвётся. */
+/** На телефоне убираем пины и оверлеи на время щипка — иначе pinch рвётся. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function attachGestureHints(
   map: any,
   container: HTMLElement | null,
-  _touchMap: boolean,
+  touchMap: boolean,
   gesturingRef: { current: boolean },
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  placemarksRef: { current: Map<string, any> },
-  pinsDetachedRef: { current: boolean },
   onGestureEnd?: () => void,
 ): () => void {
   let gesturing = false;
@@ -543,7 +547,7 @@ function attachGestureHints(
     }
     if (gesturing) return;
     gesturing = true;
-    setMapGesturing(map, gesturingRef, placemarksRef, pinsDetachedRef, true);
+    setMapGesturing(gesturingRef, true);
   };
 
   const endGesture = () => {
@@ -551,7 +555,7 @@ function attachGestureHints(
     endTimer = window.setTimeout(() => {
       endTimer = null;
       gesturing = false;
-      setMapGesturing(map, gesturingRef, placemarksRef, pinsDetachedRef, false);
+      setMapGesturing(gesturingRef, false);
       onGestureEnd?.();
     }, 120);
   };
@@ -563,7 +567,10 @@ function attachGestureHints(
     if (event.touches.length < 2) endGesture();
   };
 
-  // На touch только щипок (2 пальца), не одиночный drag — иначе пины мигают при панорамировании.
+  if (touchMap) {
+    map.events.add('actionbegin', beginGesture);
+    map.events.add('actionend', endGesture);
+  }
   map.events.add('multitouchstart', beginGesture);
   map.events.add('multitouchend', endGesture);
   container?.addEventListener('touchstart', onTouchStart, { passive: true, capture: true });
@@ -572,6 +579,10 @@ function attachGestureHints(
 
   return () => {
     try {
+      if (touchMap) {
+        map.events.remove('actionbegin', beginGesture);
+        map.events.remove('actionend', endGesture);
+      }
       map.events.remove('multitouchstart', beginGesture);
       map.events.remove('multitouchend', endGesture);
     } catch {
@@ -582,7 +593,7 @@ function attachGestureHints(
     container?.removeEventListener('touchend', onTouchEnd, true);
     container?.removeEventListener('touchcancel', endGesture, true);
     gesturing = false;
-    setMapGesturing(map, gesturingRef, placemarksRef, pinsDetachedRef, false);
+    setMapGesturing(gesturingRef, false);
   };
 }
 
@@ -765,6 +776,7 @@ export function MapCanvas({
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [touchMap, setTouchMap] = useState(false);
+  const [touchPins, setTouchPins] = useState<TouchPinView[]>([]);
   const touchMapRef = useRef(false);
 
   const mapClickRef = useRef(onMapClick);
@@ -773,7 +785,6 @@ export function MapCanvas({
   pinClickRef.current = onPinClick;
   const lastPinClickAtRef = useRef(0);
   const gesturingRef = useRef(false);
-  const pinsDetachedRef = useRef(false);
   const gestureSettleRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -805,8 +816,8 @@ export function MapCanvas({
           {
             suppressMapOpenBlock: true,
             maxAnimationZoomDifference: 23,
-            // На touch целые уровни зума: GPU масштабирует тайлы, а не пересобирает слой каждый кадр.
-            avoidFractionalZoom: touchMap,
+            // Дробный зум на touch: geoObjects нет, карта рисует только тайлы.
+            avoidFractionalZoom: !touchMap,
             autoFitToViewport: !touchMap,
             yandexMapDisablePoiInteractivity: true,
           },
@@ -878,14 +889,16 @@ export function MapCanvas({
           },
         );
 
+        if (touchMap && containerRef.current) {
+          containerRef.current.style.willChange = 'transform';
+        }
+
         mapRef.current = map;
         detachGestures = attachGestureHints(
           map,
           containerRef.current,
           touchMap,
           gesturingRef,
-          placemarksRef,
-          pinsDetachedRef,
           () => {
             gestureSettleRef.current?.();
           },
@@ -920,7 +933,7 @@ export function MapCanvas({
       readyWaitersRef.current.clear();
       placemarksRef.current.clear();
       pinStateRef.current.clear();
-      pinsDetachedRef.current = false;
+      setTouchPins([]);
       if (map) map.destroy();
       if (containerRef.current) containerRef.current.replaceChildren();
       mapRef.current = null;
@@ -949,15 +962,58 @@ export function MapCanvas({
       }
     }
 
+    if (touchMapRef.current) {
+      for (const [id, placemark] of [...existing]) {
+        map.geoObjects.remove(placemark);
+        existing.delete(id);
+        drawn.delete(id);
+      }
+
+      const syncTouchOverlay = () => {
+        if (gesturingRef.current) return;
+        const fans = computePinFans(map, pins);
+        const aliases = pinClickAliasRef.current;
+        aliases.clear();
+        const views: TouchPinView[] = [];
+        for (const pin of pins) {
+          const pos = screenPinPosition(map, pin.lat, pin.lng);
+          if (!pos) continue;
+          const fan = fans.get(pin.id) ?? { ...DEFAULT_PIN_FAN, clickId: pin.id };
+          aliases.set(pin.id, fan.clickId);
+          views.push({
+            id: pin.id,
+            label: pin.label,
+            active: !!pin.active,
+            x: pos.x,
+            y: pos.y,
+            angle: fan.angle,
+            fanX: fan.x,
+            fanY: fan.y,
+            zIndex: fan.z,
+            clickId: fan.clickId,
+            interactive: fan.interactive,
+          });
+        }
+        setTouchPins(views);
+      };
+
+      syncTouchOverlay();
+      gestureSettleRef.current = syncTouchOverlay;
+
+      return () => {
+        gestureSettleRef.current = null;
+        setTouchPins([]);
+      };
+    }
+
     const applyPins = () => {
       if (gesturingRef.current) return;
-      const rasterPins = touchMapRef.current;
       const fans = computePinFans(map, pins);
       const aliases = pinClickAliasRef.current;
       aliases.clear();
       pins.forEach((pin) => {
         let placemark = existing.get(pin.id);
-        const fan = fans.get(pin.id) ?? { angle: 0, x: 0, y: 0, z: 1000, clickId: pin.id, interactive: true };
+        const fan = fans.get(pin.id) ?? { ...DEFAULT_PIN_FAN, clickId: pin.id };
         aliases.set(pin.id, fan.clickId);
         const props = {
           label: pin.label,
@@ -965,41 +1021,23 @@ export function MapCanvas({
           fanClass: fan.interactive ? 'map-pin--fan-top' : 'map-pin--fan-under',
           fanStyle: `--fan-angle:${fan.angle}deg;--fan-x:${fan.x.toFixed(1)}px;--fan-y:${fan.y.toFixed(1)}px;`,
         };
-        const iconHref = rasterPins
-          ? touchPinIconUrl(pin.label, !!pin.active, fan.angle, fan.x, fan.y)
-          : EMPTY_PIXEL;
-        const signature = rasterPins
-          ? `${pin.label}|${props.activeClass}|${pin.lat}|${pin.lng}|${fan.angle}|${fan.x.toFixed(1)}|${fan.y.toFixed(1)}|${fan.clickId}|${fan.interactive}|raster`
-          : `${pin.label}|${props.activeClass}|${props.fanClass}|${pin.lat}|${pin.lng}|${fan.angle}|${fan.x.toFixed(1)}|${fan.y.toFixed(1)}|${fan.clickId}|${fan.interactive}`;
+        const signature = `${pin.label}|${props.activeClass}|${props.fanClass}|${pin.lat}|${pin.lng}|${fan.angle}|${fan.x.toFixed(1)}|${fan.y.toFixed(1)}|${fan.clickId}|${fan.interactive}`;
 
         if (!placemark) {
-          placemark = rasterPins
-            ? new ymaps.Placemark([pin.lat, pin.lng], {}, {
-                iconLayout: 'default#image',
-                iconImageHref: iconHref,
-                iconImageSize: [PIN_W, PIN_H],
-                iconImageOffset: [-PIN_W / 2, -PIN_H],
-                hasBalloon: false,
-                hasHint: false,
-                cursor: fan.interactive ? 'pointer' : 'default',
-                zIndex: fan.z,
-                zIndexHover: fan.z,
-                interactivityModel: fan.interactive ? 'default#opaque' : 'default#silent',
-              })
-            : new ymaps.Placemark([pin.lat, pin.lng], props, {
-                iconLayout: 'default#imageWithContent',
-                iconImageHref: EMPTY_PIXEL,
-                iconImageSize: [PIN_W, PIN_H],
-                iconImageOffset: [-PIN_W / 2, -PIN_H],
-                iconContentOffset: [0, 0],
-                iconContentLayout: layout,
-                hasBalloon: false,
-                hasHint: false,
-                cursor: fan.interactive ? 'pointer' : 'default',
-                zIndex: fan.z,
-                zIndexHover: fan.z,
-                interactivityModel: fan.interactive ? 'default#opaque' : 'default#silent',
-              });
+          placemark = new ymaps.Placemark([pin.lat, pin.lng], props, {
+            iconLayout: 'default#imageWithContent',
+            iconImageHref: EMPTY_PIXEL,
+            iconImageSize: [PIN_W, PIN_H],
+            iconImageOffset: [-PIN_W / 2, -PIN_H],
+            iconContentOffset: [0, 0],
+            iconContentLayout: layout,
+            hasBalloon: false,
+            hasHint: false,
+            cursor: fan.interactive ? 'pointer' : 'default',
+            zIndex: fan.z,
+            zIndexHover: fan.z,
+            interactivityModel: fan.interactive ? 'default#opaque' : 'default#silent',
+          });
           const ownId = pin.id;
           placemark.events.add('click', (event: { stopPropagation: () => void }) => {
             event.stopPropagation();
@@ -1011,25 +1049,14 @@ export function MapCanvas({
           existing.set(pin.id, placemark);
         } else if (drawn.get(pin.id) !== signature) {
           placemark.geometry.setCoordinates([pin.lat, pin.lng]);
-          if (rasterPins) {
-            placemark.options.set({
-              iconImageHref: iconHref,
-              iconImageOffset: [-PIN_W / 2, -PIN_H],
-              zIndex: fan.z,
-              zIndexHover: fan.z,
-              cursor: fan.interactive ? 'pointer' : 'default',
-              interactivityModel: fan.interactive ? 'default#opaque' : 'default#silent',
-            });
-          } else {
-            placemark.properties.set(props);
-            placemark.options.set({
-              iconImageOffset: [-PIN_W / 2, -PIN_H],
-              zIndex: fan.z,
-              zIndexHover: fan.z,
-              cursor: fan.interactive ? 'pointer' : 'default',
-              interactivityModel: fan.interactive ? 'default#opaque' : 'default#silent',
-            });
-          }
+          placemark.properties.set(props);
+          placemark.options.set({
+            iconImageOffset: [-PIN_W / 2, -PIN_H],
+            zIndex: fan.z,
+            zIndexHover: fan.z,
+            cursor: fan.interactive ? 'pointer' : 'default',
+            interactivityModel: fan.interactive ? 'default#opaque' : 'default#silent',
+          });
         }
 
         drawn.set(pin.id, signature);
@@ -1056,19 +1083,14 @@ export function MapCanvas({
       }
     };
 
-    // На touch веер обновляется только после щипка (gestureSettleRef), не на каждый actionend.
-    if (!touchMapRef.current) {
-      map.events.add('actionbegin', onActionBegin);
-      map.events.add('actionend', settleFan);
-    }
+    map.events.add('actionbegin', onActionBegin);
+    map.events.add('actionend', settleFan);
 
     return () => {
       if (settleTimer !== null) window.clearTimeout(settleTimer);
       gestureSettleRef.current = null;
-      if (!touchMapRef.current) {
-        map.events.remove('actionbegin', onActionBegin);
-        map.events.remove('actionend', settleFan);
-      }
+      map.events.remove('actionbegin', onActionBegin);
+      map.events.remove('actionend', settleFan);
     };
   }, [pins, ready]);
 
@@ -1355,6 +1377,52 @@ export function MapCanvas({
   return (
     <div className={touchMap ? 'map-canvas map-canvas--touch' : 'map-canvas'}>
       <div ref={containerRef} className="map-canvas__map" />
+      {touchMap && touchPins.length > 0 && (
+        <div className="map-canvas__pins">
+          {touchPins.map((pin) => (
+            <div
+              key={pin.id}
+              className="map-canvas__pin-slot"
+              style={{
+                left: pin.x,
+                top: pin.y,
+                zIndex: pin.zIndex,
+              }}
+            >
+              <button
+                type="button"
+                className={`map-pin map-pin--heart ${pin.active ? 'map-pin--active' : ''} ${
+                  pin.interactive ? 'map-pin--fan-top' : 'map-pin--fan-under'
+                }`}
+                style={{
+                  '--fan-angle': `${pin.angle}deg`,
+                  '--fan-x': `${pin.fanX.toFixed(1)}px`,
+                  '--fan-y': `${pin.fanY.toFixed(1)}px`,
+                } as CSSProperties}
+                disabled={!pin.interactive}
+                onClick={() => {
+                  if (!pin.interactive) return;
+                  lastPinClickAtRef.current = Date.now();
+                  pinClickRef.current?.(pin.clickId);
+                }}
+              >
+                <span className="map-pin__inner">
+                  <span className="map-pin__heart-wrap">
+                    <svg className="map-pin__heart-svg" viewBox="0 0 40 42" xmlns="http://www.w3.org/2000/svg">
+                      <path
+                        className="map-pin__heart-shape"
+                        d="M20 37 C20 37 5 25.5 5 15.5 C5 9.5 9.5 5 15.5 5 C18.5 5 20.5 7 20 9.5 C19.5 7 21.5 5 24.5 5 C30.5 5 35 9.5 35 15.5 C35 25.5 20 37 20 37 Z"
+                      />
+                    </svg>
+                    <span className="map-pin__heart-num">{pin.label}</span>
+                  </span>
+                  <span className="map-pin__shadow" />
+                </span>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       {!touchMap && <div className="map-canvas__tint" aria-hidden="true" />}
       {error && (
         <div className="map-canvas__error">
