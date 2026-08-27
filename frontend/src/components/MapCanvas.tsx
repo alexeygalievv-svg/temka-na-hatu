@@ -528,71 +528,212 @@ function setMapGesturing(gesturingRef: { current: boolean }, on: boolean) {
   document.body.classList.toggle('map-gesturing', on);
 }
 
-/** На телефоне убираем пины и оверлеи на время щипка — иначе pinch рвётся. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function attachGestureHints(
+function touchDistance(a: Touch, b: Touch): number {
+  return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+}
+
+function touchMidpoint(a: Touch, b: Touch, rect: DOMRect): { x: number; y: number } {
+  return {
+    x: (a.clientX + b.clientX) / 2 - rect.left,
+    y: (a.clientY + b.clientY) / 2 - rect.top,
+  };
+}
+
+type CssPinchState = {
+  dist0: number;
+  ox: number;
+  oy: number;
+  zoom0: number;
+  center0: [number, number];
+  scale: number;
+  panX: number;
+  panY: number;
+};
+
+/** Во время щипка Яндекс не трогаем: GPU масштабирует уже нарисованные тайлы. */
+function commitCssPinch(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   map: any,
-  container: HTMLElement | null,
-  touchMap: boolean,
+  pinch: CssPinchState,
+): { center: [number, number]; zoom: number } | null {
+  try {
+    const projection = map.options.get('projection');
+    const size = map.container.getSize() as [number, number];
+    const minZoom = Number(map.options.get('minZoom') ?? 0);
+    const maxZoom = Number(map.options.get('maxZoom') ?? 21);
+    const zoom = Math.max(minZoom, Math.min(maxZoom, pinch.zoom0 + Math.log2(pinch.scale)));
+    const k = 2 ** (zoom - pinch.zoom0);
+    const [cx, cy] = projection.toGlobalPixels(pinch.center0, pinch.zoom0) as [number, number];
+    const gx = (cx + (pinch.ox - size[0] / 2)) * k;
+    const gy = (cy + (pinch.oy - size[1] / 2)) * k;
+    const center = projection.fromGlobalPixels(
+      [gx - (pinch.ox + pinch.panX - size[0] / 2), gy - (pinch.oy + pinch.panY - size[1] / 2)],
+      zoom,
+    ) as [number, number];
+    return { center, zoom };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Свой щипок вместо behavior.multiTouch: CSS transform на контейнере (60fps),
+ * setCenter/setZoom Яндекса — один раз после отпускания пальцев.
+ */
+function attachCssPinch(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  map: any,
+  root: HTMLElement,
+  mapEl: HTMLElement,
   gesturingRef: { current: boolean },
   onGestureEnd?: () => void,
 ): () => void {
-  let gesturing = false;
-  let endTimer: number | null = null;
+  let pinch: CssPinchState | null = null;
+  let raf = 0;
+  let dragDisabled = false;
+  let panHiding = false;
 
-  const beginGesture = () => {
-    if (endTimer !== null) {
-      window.clearTimeout(endTimer);
-      endTimer = null;
-    }
-    if (gesturing) return;
-    gesturing = true;
+  const hideForPan = () => {
+    if (pinch || panHiding) return;
+    panHiding = true;
     setMapGesturing(gesturingRef, true);
   };
 
-  const endGesture = () => {
-    if (endTimer !== null) window.clearTimeout(endTimer);
-    endTimer = window.setTimeout(() => {
-      endTimer = null;
-      gesturing = false;
+  const showAfterPan = () => {
+    if (pinch || !panHiding) return;
+    panHiding = false;
+    setMapGesturing(gesturingRef, false);
+    onGestureEnd?.();
+  };
+
+  const paint = () => {
+    raf = 0;
+    if (!pinch) return;
+    mapEl.style.transform = `translate(${pinch.panX}px, ${pinch.panY}px) scale(${pinch.scale})`;
+  };
+
+  const begin = (event: TouchEvent) => {
+    if (event.touches.length < 2 || pinch) return;
+    const a = event.touches[0];
+    const b = event.touches[1];
+    const dist0 = touchDistance(a, b);
+    if (dist0 < 8) return;
+    const rect = root.getBoundingClientRect();
+    const mid = touchMidpoint(a, b, rect);
+    try {
+      map.action?.getCurrent?.()?.stop?.();
+      map.behaviors.disable('drag');
+      dragDisabled = true;
+    } catch {
+      dragDisabled = false;
+    }
+    pinch = {
+      dist0,
+      ox: mid.x,
+      oy: mid.y,
+      zoom0: Number(map.getZoom?.() ?? 10),
+      center0: map.getCenter() as [number, number],
+      scale: 1,
+      panX: 0,
+      panY: 0,
+    };
+    mapEl.style.willChange = 'transform';
+    mapEl.style.transformOrigin = `${mid.x}px ${mid.y}px`;
+    mapEl.style.transform = 'translate(0px, 0px) scale(1)';
+    setMapGesturing(gesturingRef, true);
+  };
+
+  const move = (event: TouchEvent) => {
+    if (!pinch || event.touches.length < 2) return;
+    event.preventDefault();
+    const a = event.touches[0];
+    const b = event.touches[1];
+    const rect = root.getBoundingClientRect();
+    const mid = touchMidpoint(a, b, rect);
+    const minZoom = Number(map.options.get('minZoom') ?? 0);
+    const maxZoom = Number(map.options.get('maxZoom') ?? 21);
+    const raw = touchDistance(a, b) / pinch.dist0;
+    const minScale = 2 ** (minZoom - pinch.zoom0);
+    const maxScale = 2 ** (maxZoom - pinch.zoom0);
+    pinch.scale = Math.min(maxScale, Math.max(minScale, raw));
+    pinch.panX = mid.x - pinch.ox;
+    pinch.panY = mid.y - pinch.oy;
+    if (!raf) raf = window.requestAnimationFrame(paint);
+  };
+
+  const finish = () => {
+    if (!pinch) return;
+    if (raf) {
+      window.cancelAnimationFrame(raf);
+      raf = 0;
+    }
+    const next = commitCssPinch(map, pinch);
+    pinch = null;
+    panHiding = false;
+    mapEl.style.willChange = '';
+    mapEl.style.transform = '';
+    mapEl.style.transformOrigin = '';
+    if (next) {
+      try {
+        map.setCenter(next.center, next.zoom, { duration: 0 });
+      } catch {
+        /* зум останется как был */
+      }
+    }
+    if (dragDisabled) {
+      try {
+        map.behaviors.enable('drag');
+      } catch {
+        /* drag и так включён */
+      }
+      dragDisabled = false;
+    }
+    window.requestAnimationFrame(() => {
       setMapGesturing(gesturingRef, false);
       onGestureEnd?.();
-    }, 120);
+    });
   };
 
   const onTouchStart = (event: TouchEvent) => {
-    if (event.touches.length >= 2) beginGesture();
+    if (event.touches.length >= 2) begin(event);
+  };
+  const onTouchMove = (event: TouchEvent) => {
+    move(event);
   };
   const onTouchEnd = (event: TouchEvent) => {
-    if (event.touches.length < 2) endGesture();
+    if (pinch && event.touches.length < 2) finish();
   };
 
-  if (touchMap) {
-    map.events.add('actionbegin', beginGesture);
-    map.events.add('actionend', endGesture);
-  }
-  map.events.add('multitouchstart', beginGesture);
-  map.events.add('multitouchend', endGesture);
-  container?.addEventListener('touchstart', onTouchStart, { passive: true, capture: true });
-  container?.addEventListener('touchend', onTouchEnd, { passive: true, capture: true });
-  container?.addEventListener('touchcancel', endGesture, { passive: true, capture: true });
+  root.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
+  root.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
+  root.addEventListener('touchend', onTouchEnd, { capture: true, passive: true });
+  root.addEventListener('touchcancel', onTouchEnd, { capture: true, passive: true });
+  map.events.add('actionbegin', hideForPan);
+  map.events.add('actionend', showAfterPan);
 
   return () => {
+    root.removeEventListener('touchstart', onTouchStart, true);
+    root.removeEventListener('touchmove', onTouchMove, true);
+    root.removeEventListener('touchend', onTouchEnd, true);
+    root.removeEventListener('touchcancel', onTouchEnd, true);
     try {
-      if (touchMap) {
-        map.events.remove('actionbegin', beginGesture);
-        map.events.remove('actionend', endGesture);
-      }
-      map.events.remove('multitouchstart', beginGesture);
-      map.events.remove('multitouchend', endGesture);
+      map.events.remove('actionbegin', hideForPan);
+      map.events.remove('actionend', showAfterPan);
     } catch {
       /* destroy */
     }
-    if (endTimer !== null) window.clearTimeout(endTimer);
-    container?.removeEventListener('touchstart', onTouchStart, true);
-    container?.removeEventListener('touchend', onTouchEnd, true);
-    container?.removeEventListener('touchcancel', endGesture, true);
-    gesturing = false;
+    if (raf) window.cancelAnimationFrame(raf);
+    pinch = null;
+    mapEl.style.willChange = '';
+    mapEl.style.transform = '';
+    mapEl.style.transformOrigin = '';
+    if (dragDisabled) {
+      try {
+        map.behaviors.enable('drag');
+      } catch {
+        /* destroy */
+      }
+    }
     setMapGesturing(gesturingRef, false);
   };
 }
@@ -757,6 +898,7 @@ export function MapCanvas({
   ref,
 }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -784,6 +926,7 @@ export function MapCanvas({
   const pinClickRef = useRef(onPinClick);
   pinClickRef.current = onPinClick;
   const lastPinClickAtRef = useRef(0);
+  const pinchEndedAtRef = useRef(0);
   const gesturingRef = useRef(false);
   const gestureSettleRef = useRef<(() => void) | null>(null);
 
@@ -811,12 +954,12 @@ export function MapCanvas({
             center: [initialCenter.lat, initialCenter.lng],
             zoom: initialZoom,
             controls: [],
-            behaviors: touchMap ? ['drag', 'multiTouch'] : ['drag', 'scrollZoom'],
+            behaviors: touchMap ? ['drag'] : ['drag', 'scrollZoom'],
           },
           {
             suppressMapOpenBlock: true,
             maxAnimationZoomDifference: 23,
-            // Дробный зум на touch: geoObjects нет, карта рисует только тайлы.
+            // Нативный pinch Яндекса на телефоне тормозит — зум делаем CSS-ом.
             avoidFractionalZoom: !touchMap,
             autoFitToViewport: !touchMap,
             yandexMapDisablePoiInteractivity: true,
@@ -830,12 +973,9 @@ export function MapCanvas({
           /* штатная инерция и так включена */
         }
         if (touchMap) {
-          try {
-            map.behaviors.get('multiTouch')?.options.set({ tremor: 1 });
-          } catch {
-            /* pinch останется со стандартной чувствительностью */
-          }
           map.behaviors.disable('scrollZoom');
+          map.behaviors.disable('multiTouch');
+          map.behaviors.disable('dblClickZoom');
         } else {
           try {
             map.behaviors.get('scrollZoom')?.options.set({
@@ -868,6 +1008,8 @@ export function MapCanvas({
           'click',
           (event: { get: (name: string) => number[] }) => {
             if (!mapClickRef.current) return;
+            if (gesturingRef.current) return;
+            if (Date.now() - pinchEndedAtRef.current < 400) return;
             if (Date.now() - lastPinClickAtRef.current < 500) return;
             const coords = event.get('coords');
             const pixel = event.get('pixel') ?? event.get('position');
@@ -889,20 +1031,19 @@ export function MapCanvas({
           },
         );
 
-        if (touchMap && containerRef.current) {
-          containerRef.current.style.willChange = 'transform';
-        }
-
         mapRef.current = map;
-        detachGestures = attachGestureHints(
-          map,
-          containerRef.current,
-          touchMap,
-          gesturingRef,
-          () => {
-            gestureSettleRef.current?.();
-          },
-        );
+        if (touchMap && rootRef.current && containerRef.current) {
+          detachGestures = attachCssPinch(
+            map,
+            rootRef.current,
+            containerRef.current,
+            gesturingRef,
+            () => {
+              pinchEndedAtRef.current = Date.now();
+              gestureSettleRef.current?.();
+            },
+          );
+        }
         if (import.meta.env.DEV && !touchMap) {
           detachDiag = attachTileDiagnostics(map, containerRef.current);
         }
@@ -1375,8 +1516,10 @@ export function MapCanvas({
   );
 
   return (
-    <div className={touchMap ? 'map-canvas map-canvas--touch' : 'map-canvas'}>
-      <div ref={containerRef} className="map-canvas__map" />
+    <div ref={rootRef} className={touchMap ? 'map-canvas map-canvas--touch' : 'map-canvas'}>
+      <div className="map-canvas__viewport">
+        <div ref={containerRef} className="map-canvas__map" />
+      </div>
       {touchMap && touchPins.length > 0 && (
         <div className="map-canvas__pins">
           {touchPins.map((pin) => (

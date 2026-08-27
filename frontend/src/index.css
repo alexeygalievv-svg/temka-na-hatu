@@ -227,12 +227,21 @@ html.is-touch-map [class*='ymaps-2-1-gototech'] {
   position: absolute;
   inset: 0;
   touch-action: none;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+.map-canvas__viewport {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  touch-action: none;
 }
 
 .map-canvas__map {
   position: absolute;
   inset: 0;
-  /* Без filter/transform: иначе Яндекс не может двигать тайлы на своём слое. */
+  /* Без filter на самом слое: иначе Яндекс не может двигать тайлы. */
   touch-action: none;
 }
 
