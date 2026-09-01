@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { DraftPoint, IntroSettings, PublishProgress } from '../types';
 import { haptic } from '../telegram';
@@ -68,17 +68,6 @@ export function BuilderScreen({
 
   const selected = points.find((p) => p.id === selectedId) ?? null;
   const selectedIndex = selected ? points.indexOf(selected) : -1;
-  const pins = useMemo(
-    () =>
-      points.map((p, i) => ({
-        id: p.id,
-        lat: p.lat,
-        lng: p.lng,
-        label: String(i + 1),
-        active: p.id === selectedId,
-      })),
-    [points, selectedId],
-  );
 
   useEffect(() => {
     if (points.length === 0 || mapFittedRef.current) return;
@@ -145,7 +134,13 @@ export function BuilderScreen({
         ref={mapRef}
         initialCenter={points[0] ?? MOSCOW}
         initialZoom={12}
-        pins={pins}
+        pins={points.map((p, i) => ({
+          id: p.id,
+          lat: p.lat,
+          lng: p.lng,
+          label: String(i + 1),
+          active: p.id === selectedId,
+        }))}
         onMapClick={handleMapClick}
         onPinClick={(id) => setSelectedId(id)}
       />

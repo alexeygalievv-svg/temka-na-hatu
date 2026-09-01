@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import type { DraftPoint, IntroSettings, PublishProgress } from './types';
 import { DEFAULT_INTRO } from './types';
 import { getStartParam, getUserName, haptic } from './telegram';
@@ -18,8 +18,17 @@ type Route =
   | { name: 'viewer'; mapId: string };
 
 function Screen({ children }: { children: ReactNode }) {
-  // Без transform/opacity-слоя Framer Motion: иначе pinch Яндекса на телефоне падает до нескольких FPS.
-  return <div className="screen">{children}</div>;
+  return (
+    <motion.div
+      className="screen"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+    >
+      {children}
+    </motion.div>
+  );
 }
 
 export default function App() {

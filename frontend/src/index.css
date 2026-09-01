@@ -75,8 +75,11 @@ body.map-gesturing::after {
   display: none;
 }
 
+body.map-gesturing .map-pin {
+  display: none;
+}
+
 body.map-gesturing .map-canvas__tint,
-body.map-gesturing .map-canvas__pins,
 body.map-gesturing .builder__header,
 body.map-gesturing .builder__dock,
 body.map-gesturing .viewer__topbar,
@@ -84,8 +87,7 @@ body.map-gesturing .viewer__caption,
 body.map-gesturing .viewer__explore-hint,
 body.map-gesturing .viewer__nudge,
 body.map-gesturing .viewer__skip {
-  visibility: hidden;
-  pointer-events: none;
+  display: none;
 }
 
 @media (pointer: coarse) {
@@ -94,12 +96,10 @@ body.map-gesturing .viewer__skip {
   }
 
   .builder__header,
-  .builder__dock .btn,
   .btn--ghost,
   .viewer__nudge,
   .viewer__caption,
-  .viewer__explore-hint,
-  .viewer__topbar {
+  .viewer__explore-hint {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
@@ -113,51 +113,11 @@ body.map-gesturing .viewer__skip {
   }
 }
 
-/* Telegram WebView часто не даёт pointer: coarse — дублируем по классу с JS. */
-html.is-touch-map body::after {
-  display: none;
-}
-
-html.is-touch-map .builder__header,
-html.is-touch-map .builder__dock .btn,
-html.is-touch-map .btn--ghost,
-html.is-touch-map .viewer__nudge,
-html.is-touch-map .viewer__caption,
-html.is-touch-map .viewer__explore-hint,
-html.is-touch-map .viewer__topbar {
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-
-html.is-touch-map .map-canvas__tint {
-  display: none;
-}
-
-html.is-touch-map .map-pin__shadow {
-  filter: none;
-}
-
-html.is-touch-map [class*='ymaps-2-1-copyrights-pane'],
-html.is-touch-map [class*='ymaps-2-1-copyright'],
-html.is-touch-map [class*='ymaps-2-1-gototech'] {
-  display: none !important;
-}
-
 .app,
 .screen {
   position: absolute;
   inset: 0;
   overflow: hidden;
-}
-
-.app,
-.screen,
-.builder,
-.viewer {
-  transform: none !important;
-  filter: none !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
 }
 
 /* ============ Кнопки ============ */
@@ -227,69 +187,13 @@ html.is-touch-map [class*='ymaps-2-1-gototech'] {
   position: absolute;
   inset: 0;
   touch-action: none;
-  overflow: hidden;
-  overscroll-behavior: none;
-}
-
-.map-canvas__viewport {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  touch-action: none;
 }
 
 .map-canvas__map {
   position: absolute;
   inset: 0;
-  /* Без filter на самом слое: иначе Яндекс не может двигать тайлы. */
+  /* Без filter/transform: иначе Яндекс не может двигать тайлы на своём слое. */
   touch-action: none;
-}
-
-.map-canvas--touch .map-canvas__map {
-  isolation: isolate;
-}
-
-.map-canvas__pinch-proxy {
-  position: absolute;
-  inset: 0;
-  z-index: 4;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.map-canvas__pinch-shot {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 100%;
-  height: 100%;
-  display: block;
-  will-change: transform;
-  transform-origin: center center;
-}
-
-.map-canvas__pins {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  pointer-events: none;
-  overflow: hidden;
-}
-
-.map-canvas__pin-slot {
-  position: absolute;
-  transform: translate(-50%, -100%);
-  pointer-events: none;
-}
-
-.map-canvas__pin-slot .map-pin {
-  border: 0;
-  padding: 0;
-  margin: 0;
-  background: transparent;
-  font: inherit;
-  color: inherit;
-  -webkit-tap-highlight-color: transparent;
 }
 
 .map-canvas__map > div,

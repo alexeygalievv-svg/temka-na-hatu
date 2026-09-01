@@ -36,7 +36,7 @@ export function loadYmaps(): Promise<any> {
     }
 
     const script = document.createElement('script');
-    script.src = `https://api-maps.yandex.ru/2.1/?apikey=${encodeURIComponent(apiKey)}&lang=ru_RU&mode=release`;
+    script.src = `https://api-maps.yandex.ru/2.1/?apikey=${encodeURIComponent(apiKey)}&lang=ru_RU`;
     script.async = true;
     script.onload = () => {
       if (!window.ymaps?.ready) {

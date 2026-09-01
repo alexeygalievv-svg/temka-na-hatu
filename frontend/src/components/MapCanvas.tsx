@@ -1,4 +1,4 @@
-import { useEffect, useImperativeHandle, useRef, useState, type CSSProperties, type Ref } from 'react';
+import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import { loadYmaps } from '../lib/ymaps';
 
 export interface MapPin {
@@ -33,70 +33,18 @@ const PIN_W = 40;
 const PIN_H = 42;
 /** 3px на округление проекции: веер только если иконка целиком под другой. */
 const PIN_COVER_TOL = 3;
-const EMPTY_PIXEL =
-  'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 
 type PinItem = { pin: MapPin; px: number; py: number };
 type PinAabb = { left: number; right: number; top: number; bottom: number };
 type PinFan = { angle: number; x: number; y: number; z: number; clickId: string; interactive: boolean };
 
-type TouchPinView = {
-  id: string;
-  label: string;
-  active: boolean;
-  x: number;
-  y: number;
-  angle: number;
-  fanX: number;
-  fanY: number;
-  zIndex: number;
-  clickId: string;
-  interactive: boolean;
-};
-
-const DEFAULT_PIN_FAN: PinFan = {
-  angle: 0,
-  x: 0,
-  y: 0,
-  z: 1000,
-  clickId: '',
-  interactive: true,
-};
-
 function prefersTouchMap(): boolean {
   if (typeof window === 'undefined') return false;
   return (
-    navigator.maxTouchPoints > 0 ||
     window.matchMedia('(pointer: coarse)').matches ||
     window.matchMedia('(hover: none)').matches ||
     'ontouchstart' in window
   );
-}
-
-function markTouchUi() {
-  if (prefersTouchMap()) document.documentElement.classList.add('is-touch-map');
-}
-
-function screenPinPosition(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  map: any,
-  lat: number,
-  lng: number,
-): { x: number; y: number } | null {
-  try {
-    const zoom = Number(map.getZoom?.() ?? 10);
-    const projection = map.options.get('projection');
-    const center = map.getCenter() as [number, number];
-    const size = map.container.getSize() as [number, number];
-    const [cx, cy] = projection.toGlobalPixels(center, zoom) as [number, number];
-    const [px, py] = projection.toGlobalPixels([lat, lng], zoom) as [number, number];
-    return {
-      x: size[0] / 2 + (px - cx),
-      y: size[1] / 2 + (py - cy),
-    };
-  } catch {
-    return null;
-  }
 }
 
 function pinAabb(px: number, py: number): PinAabb {
@@ -523,288 +471,62 @@ function attachTileDiagnostics(map: any, container: HTMLElement | null): () => v
   };
 }
 
-function setMapGesturing(gesturingRef: { current: boolean }, on: boolean) {
-  gesturingRef.current = on;
+function setMapGesturing(on: boolean) {
   document.body.classList.toggle('map-gesturing', on);
 }
 
-function touchDistance(a: Touch, b: Touch): number {
-  return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
-}
-
-function touchMidpoint(a: Touch, b: Touch, rect: DOMRect): { x: number; y: number } {
-  return {
-    x: (a.clientX + b.clientX) / 2 - rect.left,
-    y: (a.clientY + b.clientY) / 2 - rect.top,
-  };
-}
-
-type CssPinchState = {
-  dist0: number;
-  ox: number;
-  oy: number;
-  zoom0: number;
-  center0: [number, number];
-  scale: number;
-  panX: number;
-  panY: number;
-};
-
-/** Во время щипка Яндекс не трогаем: GPU масштабирует уже нарисованные тайлы. */
-function commitCssPinch(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  map: any,
-  pinch: CssPinchState,
-): { center: [number, number]; zoom: number } | null {
-  try {
-    const projection = map.options.get('projection');
-    const size = map.container.getSize() as [number, number];
-    const minZoom = Number(map.options.get('minZoom') ?? 0);
-    const maxZoom = Number(map.options.get('maxZoom') ?? 21);
-    const zoom = Math.max(minZoom, Math.min(maxZoom, pinch.zoom0 + Math.log2(pinch.scale)));
-    const k = 2 ** (zoom - pinch.zoom0);
-    const [cx, cy] = projection.toGlobalPixels(pinch.center0, pinch.zoom0) as [number, number];
-    const gx = (cx + (pinch.ox - size[0] / 2)) * k;
-    const gy = (cy + (pinch.oy - size[1] / 2)) * k;
-    const center = projection.fromGlobalPixels(
-      [gx - (pinch.ox + pinch.panX - size[0] / 2), gy - (pinch.oy + pinch.panY - size[1] / 2)],
-      zoom,
-    ) as [number, number];
-    return { center, zoom };
-  } catch {
-    return null;
-  }
-}
-
-function snapshotMapVisual(mapEl: HTMLElement): HTMLElement {
-  const rect = mapEl.getBoundingClientRect();
-  const width = Math.max(1, Math.round(rect.width));
-  const height = Math.max(1, Math.round(rect.height));
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  canvas.className = 'map-canvas__pinch-shot';
-  const ctx = canvas.getContext('2d', { alpha: false });
-  if (ctx) {
-    ctx.fillStyle = '#e6e0d4';
-    ctx.fillRect(0, 0, width, height);
-    let drew = 0;
-    mapEl.querySelectorAll('canvas, img').forEach((node) => {
-      const box = node.getBoundingClientRect();
-      if (box.width < 2 || box.height < 2) return;
-      try {
-        if (node instanceof HTMLCanvasElement && node.width > 0) {
-          ctx.drawImage(node, box.left - rect.left, box.top - rect.top, box.width, box.height);
-          drew += 1;
-        } else if (node instanceof HTMLImageElement && node.naturalWidth > 0) {
-          ctx.drawImage(node, box.left - rect.left, box.top - rect.top, box.width, box.height);
-          drew += 1;
-        }
-      } catch {
-        /* кросс-доменный тайл */
-      }
-    });
-    if (drew > 0) return canvas;
-  }
-
-  const clone = mapEl.cloneNode(true) as HTMLElement;
-  clone.className = 'map-canvas__pinch-shot';
-  clone.style.pointerEvents = 'none';
-  const srcCanvases = mapEl.querySelectorAll('canvas');
-  const dstCanvases = clone.querySelectorAll('canvas');
-  srcCanvases.forEach((src, index) => {
-    const dst = dstCanvases[index];
-    if (!(dst instanceof HTMLCanvasElement)) return;
-    dst.width = src.width;
-    dst.height = src.height;
-    try {
-      dst.getContext('2d')?.drawImage(src, 0, 0);
-    } catch {
-      /* пропускаем */
+/** На телефоне сразу гасим оверлеи и пины — иначе щипок рвётся. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function attachGestureHints(map: any, container: HTMLElement | null): () => void {
+  let endTimer: number | null = null;
+  const onBegin = () => {
+    if (endTimer !== null) {
+      window.clearTimeout(endTimer);
+      endTimer = null;
     }
-  });
-  return clone;
-}
-
-/**
- * Свой щипок: живую карту Яндекса не масштабируем. Крутится снимок,
- * setCenter — один раз после отпускания, пока снимок ещё на экране.
- */
-function attachCssPinch(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  map: any,
-  root: HTMLElement,
-  mapEl: HTMLElement,
-  gesturingRef: { current: boolean },
-  onGestureEnd?: () => void,
-): () => void {
-  let pinch: CssPinchState | null = null;
-  let raf = 0;
-  let dragDisabled = false;
-  let panHiding = false;
-  let committing = false;
-  let overlay: HTMLDivElement | null = null;
-  let shot: HTMLElement | null = null;
-
-  const hideForPan = () => {
-    if (pinch || committing || panHiding) return;
-    panHiding = true;
-    setMapGesturing(gesturingRef, true);
+    setMapGesturing(true);
   };
-
-  const showAfterPan = () => {
-    if (pinch || committing || !panHiding) return;
-    panHiding = false;
-    setMapGesturing(gesturingRef, false);
-    onGestureEnd?.();
+  const onEnd = () => {
+    if (endTimer !== null) window.clearTimeout(endTimer);
+    endTimer = window.setTimeout(() => {
+      endTimer = null;
+      setMapGesturing(false);
+    }, 160);
   };
-
-  const dropOverlay = () => {
-    overlay?.remove();
-    overlay = null;
-    shot = null;
-    mapEl.style.visibility = '';
-  };
-
-  const paint = () => {
-    raf = 0;
-    if (!pinch || !shot) return;
-    shot.style.transform = `translate(${pinch.panX}px, ${pinch.panY}px) scale(${pinch.scale})`;
-  };
-
-  const begin = (event: TouchEvent) => {
-    if (event.touches.length < 2 || pinch || committing) return;
-    const a = event.touches[0];
-    const b = event.touches[1];
-    const dist0 = touchDistance(a, b);
-    if (dist0 < 8) return;
-    const rect = root.getBoundingClientRect();
-    const mid = touchMidpoint(a, b, rect);
-    try {
-      map.action?.getCurrent?.()?.stop?.();
-      map.behaviors.disable('drag');
-      dragDisabled = true;
-    } catch {
-      dragDisabled = false;
-    }
-
-    dropOverlay();
-    shot = snapshotMapVisual(mapEl);
-    shot.style.transformOrigin = `${mid.x}px ${mid.y}px`;
-    shot.style.transform = 'translate(0px, 0px) scale(1)';
-    overlay = document.createElement('div');
-    overlay.className = 'map-canvas__pinch-proxy';
-    overlay.appendChild(shot);
-    root.appendChild(overlay);
-    mapEl.style.visibility = 'hidden';
-
-    pinch = {
-      dist0,
-      ox: mid.x,
-      oy: mid.y,
-      zoom0: Number(map.getZoom?.() ?? 10),
-      center0: map.getCenter() as [number, number],
-      scale: 1,
-      panX: 0,
-      panY: 0,
-    };
-    setMapGesturing(gesturingRef, true);
-  };
-
-  const move = (event: TouchEvent) => {
-    if (!pinch || event.touches.length < 2) return;
-    event.preventDefault();
-    const a = event.touches[0];
-    const b = event.touches[1];
-    const rect = root.getBoundingClientRect();
-    const mid = touchMidpoint(a, b, rect);
-    const minZoom = Number(map.options.get('minZoom') ?? 0);
-    const maxZoom = Number(map.options.get('maxZoom') ?? 21);
-    const raw = touchDistance(a, b) / pinch.dist0;
-    const minScale = 2 ** (minZoom - pinch.zoom0);
-    const maxScale = 2 ** (maxZoom - pinch.zoom0);
-    pinch.scale = Math.min(maxScale, Math.max(minScale, raw));
-    pinch.panX = mid.x - pinch.ox;
-    pinch.panY = mid.y - pinch.oy;
-    if (!raf) raf = window.requestAnimationFrame(paint);
-  };
-
-  const finish = () => {
-    if (!pinch || committing) return;
-    if (raf) {
-      window.cancelAnimationFrame(raf);
-      raf = 0;
-    }
-    const next = commitCssPinch(map, pinch);
-    pinch = null;
-    panHiding = false;
-    committing = true;
-    if (next) {
-      try {
-        map.setCenter(next.center, next.zoom, { duration: 0 });
-      } catch {
-        /* зум останется как был */
-      }
-    }
-    const reveal = () => {
-      dropOverlay();
-      if (dragDisabled) {
-        try {
-          map.behaviors.enable('drag');
-        } catch {
-          /* drag и так включён */
-        }
-        dragDisabled = false;
-      }
-      committing = false;
-      setMapGesturing(gesturingRef, false);
-      onGestureEnd?.();
-    };
-    void waitForVisibleTiles(map, 700).then(reveal);
-  };
-
   const onTouchStart = (event: TouchEvent) => {
-    if (event.touches.length >= 2) {
-      event.preventDefault();
-      begin(event);
-    }
+    if (event.touches.length >= 2) onBegin();
   };
   const onTouchMove = (event: TouchEvent) => {
-    move(event);
+    if (event.touches.length >= 2) onBegin();
   };
   const onTouchEnd = (event: TouchEvent) => {
-    if (pinch && event.touches.length < 2) finish();
+    if (event.touches.length < 2) onEnd();
   };
 
-  root.addEventListener('touchstart', onTouchStart, { capture: true, passive: false });
-  root.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
-  root.addEventListener('touchend', onTouchEnd, { capture: true, passive: true });
-  root.addEventListener('touchcancel', onTouchEnd, { capture: true, passive: true });
-  map.events.add('actionbegin', hideForPan);
-  map.events.add('actionend', showAfterPan);
+  map.events.add('actionbegin', onBegin);
+  map.events.add('actionend', onEnd);
+  map.events.add('multitouchstart', onBegin);
+  map.events.add('multitouchend', onEnd);
+  container?.addEventListener('touchstart', onTouchStart, { passive: true });
+  container?.addEventListener('touchmove', onTouchMove, { passive: true });
+  container?.addEventListener('touchend', onTouchEnd, { passive: true });
+  container?.addEventListener('touchcancel', onEnd, { passive: true });
 
   return () => {
-    root.removeEventListener('touchstart', onTouchStart, true);
-    root.removeEventListener('touchmove', onTouchMove, true);
-    root.removeEventListener('touchend', onTouchEnd, true);
-    root.removeEventListener('touchcancel', onTouchEnd, true);
     try {
-      map.events.remove('actionbegin', hideForPan);
-      map.events.remove('actionend', showAfterPan);
+      map.events.remove('actionbegin', onBegin);
+      map.events.remove('actionend', onEnd);
+      map.events.remove('multitouchstart', onBegin);
+      map.events.remove('multitouchend', onEnd);
     } catch {
       /* destroy */
     }
-    if (raf) window.cancelAnimationFrame(raf);
-    pinch = null;
-    dropOverlay();
-    if (dragDisabled) {
-      try {
-        map.behaviors.enable('drag');
-      } catch {
-        /* destroy */
-      }
-    }
-    setMapGesturing(gesturingRef, false);
+    if (endTimer !== null) window.clearTimeout(endTimer);
+    container?.removeEventListener('touchstart', onTouchStart);
+    container?.removeEventListener('touchmove', onTouchMove);
+    container?.removeEventListener('touchend', onTouchEnd);
+    container?.removeEventListener('touchcancel', onEnd);
+    setMapGesturing(false);
   };
 }
 
@@ -968,7 +690,6 @@ export function MapCanvas({
   ref,
 }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const rootRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -988,17 +709,12 @@ export function MapCanvas({
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [touchMap, setTouchMap] = useState(false);
-  const [touchPins, setTouchPins] = useState<TouchPinView[]>([]);
-  const touchMapRef = useRef(false);
 
   const mapClickRef = useRef(onMapClick);
   mapClickRef.current = onMapClick;
   const pinClickRef = useRef(onPinClick);
   pinClickRef.current = onPinClick;
   const lastPinClickAtRef = useRef(0);
-  const pinchEndedAtRef = useRef(0);
-  const gesturingRef = useRef(false);
-  const gestureSettleRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -1014,8 +730,6 @@ export function MapCanvas({
         pinLayoutRef.current = pinLayoutClass(ymaps);
 
         const touchMap = prefersTouchMap();
-        touchMapRef.current = touchMap;
-        markTouchUi();
         setTouchMap(touchMap);
 
         map = new ymaps.Map(
@@ -1024,28 +738,30 @@ export function MapCanvas({
             center: [initialCenter.lat, initialCenter.lng],
             zoom: initialZoom,
             controls: [],
-            behaviors: touchMap ? ['drag'] : ['drag', 'scrollZoom'],
+            behaviors: touchMap ? ['drag', 'multiTouch'] : ['drag', 'scrollZoom'],
           },
           {
             suppressMapOpenBlock: true,
             maxAnimationZoomDifference: 23,
-            // Нативный pinch Яндекса на телефоне тормозит — зум делаем CSS-ом.
-            avoidFractionalZoom: !touchMap,
-            autoFitToViewport: !touchMap,
+            // На телефоне дробный зум при щипке — иначе зум «ступеньками».
+            avoidFractionalZoom: false,
             yandexMapDisablePoiInteractivity: true,
           },
         );
 
         map.behaviors.disable('dblClickZoom');
         try {
-          map.behaviors.get('drag')?.options.set({ inertia: !touchMap });
+          map.behaviors.get('drag')?.options.set({ inertia: true });
         } catch {
           /* штатная инерция и так включена */
         }
         if (touchMap) {
+          try {
+            map.behaviors.get('multiTouch')?.options.set({ tremor: 8 });
+          } catch {
+            /* pinch останется со стандартной чувствительностью */
+          }
           map.behaviors.disable('scrollZoom');
-          map.behaviors.disable('multiTouch');
-          map.behaviors.disable('dblClickZoom');
         } else {
           try {
             map.behaviors.get('scrollZoom')?.options.set({
@@ -1078,8 +794,6 @@ export function MapCanvas({
           'click',
           (event: { get: (name: string) => number[] }) => {
             if (!mapClickRef.current) return;
-            if (gesturingRef.current) return;
-            if (Date.now() - pinchEndedAtRef.current < 400) return;
             if (Date.now() - lastPinClickAtRef.current < 500) return;
             const coords = event.get('coords');
             const pixel = event.get('pixel') ?? event.get('position');
@@ -1102,19 +816,8 @@ export function MapCanvas({
         );
 
         mapRef.current = map;
-        if (touchMap && rootRef.current && containerRef.current) {
-          detachGestures = attachCssPinch(
-            map,
-            rootRef.current,
-            containerRef.current,
-            gesturingRef,
-            () => {
-              pinchEndedAtRef.current = Date.now();
-              gestureSettleRef.current?.();
-            },
-          );
-        }
-        if (import.meta.env.DEV && !touchMap) {
+        detachGestures = attachGestureHints(map, containerRef.current);
+        if (import.meta.env.DEV) {
           detachDiag = attachTileDiagnostics(map, containerRef.current);
         }
         // Родительский Screen входит через transform/scale. После окончания
@@ -1129,10 +832,7 @@ export function MapCanvas({
         if (!cancelled) setError(err.message);
       });
 
-    const handleResize = () => {
-      if (gesturingRef.current) return;
-      mapRef.current?.container.fitToViewport();
-    };
+    const handleResize = () => mapRef.current?.container.fitToViewport();
     window.addEventListener('resize', handleResize);
 
     return () => {
@@ -1144,11 +844,9 @@ export function MapCanvas({
       readyWaitersRef.current.clear();
       placemarksRef.current.clear();
       pinStateRef.current.clear();
-      setTouchPins([]);
       if (map) map.destroy();
       if (containerRef.current) containerRef.current.replaceChildren();
       mapRef.current = null;
-      touchMapRef.current = false;
       setTouchMap(false);
       setReady(false);
     };
@@ -1173,58 +871,13 @@ export function MapCanvas({
       }
     }
 
-    if (touchMapRef.current) {
-      for (const [id, placemark] of [...existing]) {
-        map.geoObjects.remove(placemark);
-        existing.delete(id);
-        drawn.delete(id);
-      }
-
-      const syncTouchOverlay = () => {
-        if (gesturingRef.current) return;
-        const fans = computePinFans(map, pins);
-        const aliases = pinClickAliasRef.current;
-        aliases.clear();
-        const views: TouchPinView[] = [];
-        for (const pin of pins) {
-          const pos = screenPinPosition(map, pin.lat, pin.lng);
-          if (!pos) continue;
-          const fan = fans.get(pin.id) ?? { ...DEFAULT_PIN_FAN, clickId: pin.id };
-          aliases.set(pin.id, fan.clickId);
-          views.push({
-            id: pin.id,
-            label: pin.label,
-            active: !!pin.active,
-            x: pos.x,
-            y: pos.y,
-            angle: fan.angle,
-            fanX: fan.x,
-            fanY: fan.y,
-            zIndex: fan.z,
-            clickId: fan.clickId,
-            interactive: fan.interactive,
-          });
-        }
-        setTouchPins(views);
-      };
-
-      syncTouchOverlay();
-      gestureSettleRef.current = syncTouchOverlay;
-
-      return () => {
-        gestureSettleRef.current = null;
-        setTouchPins([]);
-      };
-    }
-
     const applyPins = () => {
-      if (gesturingRef.current) return;
       const fans = computePinFans(map, pins);
       const aliases = pinClickAliasRef.current;
       aliases.clear();
       pins.forEach((pin) => {
         let placemark = existing.get(pin.id);
-        const fan = fans.get(pin.id) ?? { ...DEFAULT_PIN_FAN, clickId: pin.id };
+        const fan = fans.get(pin.id) ?? { angle: 0, x: 0, y: 0, z: 1000, clickId: pin.id, interactive: true };
         aliases.set(pin.id, fan.clickId);
         const props = {
           label: pin.label,
@@ -1237,7 +890,8 @@ export function MapCanvas({
         if (!placemark) {
           placemark = new ymaps.Placemark([pin.lat, pin.lng], props, {
             iconLayout: 'default#imageWithContent',
-            iconImageHref: EMPTY_PIXEL,
+            iconImageHref:
+              'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
             iconImageSize: [PIN_W, PIN_H],
             iconImageOffset: [-PIN_W / 2, -PIN_H],
             iconContentOffset: [0, 0],
@@ -1278,15 +932,12 @@ export function MapCanvas({
 
     let settleTimer: number | null = null;
     const settleFan = () => {
-      if (gesturingRef.current) return;
       if (settleTimer !== null) window.clearTimeout(settleTimer);
       settleTimer = window.setTimeout(() => {
         settleTimer = null;
         applyPins();
       }, 420);
     };
-    gestureSettleRef.current = applyPins;
-
     const onActionBegin = () => {
       if (settleTimer !== null) {
         window.clearTimeout(settleTimer);
@@ -1294,12 +945,12 @@ export function MapCanvas({
       }
     };
 
+    // Не трогаем веер, пока палец/колёсико двигают карту — иначе анимация и углы дёргаются.
     map.events.add('actionbegin', onActionBegin);
     map.events.add('actionend', settleFan);
 
     return () => {
       if (settleTimer !== null) window.clearTimeout(settleTimer);
-      gestureSettleRef.current = null;
       map.events.remove('actionbegin', onActionBegin);
       map.events.remove('actionend', settleFan);
     };
@@ -1586,56 +1237,8 @@ export function MapCanvas({
   );
 
   return (
-    <div ref={rootRef} className={touchMap ? 'map-canvas map-canvas--touch' : 'map-canvas'}>
-      <div className="map-canvas__viewport">
-        <div ref={containerRef} className="map-canvas__map" />
-      </div>
-      {touchMap && touchPins.length > 0 && (
-        <div className="map-canvas__pins">
-          {touchPins.map((pin) => (
-            <div
-              key={pin.id}
-              className="map-canvas__pin-slot"
-              style={{
-                left: pin.x,
-                top: pin.y,
-                zIndex: pin.zIndex,
-              }}
-            >
-              <button
-                type="button"
-                className={`map-pin map-pin--heart ${pin.active ? 'map-pin--active' : ''} ${
-                  pin.interactive ? 'map-pin--fan-top' : 'map-pin--fan-under'
-                }`}
-                style={{
-                  '--fan-angle': `${pin.angle}deg`,
-                  '--fan-x': `${pin.fanX.toFixed(1)}px`,
-                  '--fan-y': `${pin.fanY.toFixed(1)}px`,
-                } as CSSProperties}
-                disabled={!pin.interactive}
-                onClick={() => {
-                  if (!pin.interactive) return;
-                  lastPinClickAtRef.current = Date.now();
-                  pinClickRef.current?.(pin.clickId);
-                }}
-              >
-                <span className="map-pin__inner">
-                  <span className="map-pin__heart-wrap">
-                    <svg className="map-pin__heart-svg" viewBox="0 0 40 42" xmlns="http://www.w3.org/2000/svg">
-                      <path
-                        className="map-pin__heart-shape"
-                        d="M20 37 C20 37 5 25.5 5 15.5 C5 9.5 9.5 5 15.5 5 C18.5 5 20.5 7 20 9.5 C19.5 7 21.5 5 24.5 5 C30.5 5 35 9.5 35 15.5 C35 25.5 20 37 20 37 Z"
-                      />
-                    </svg>
-                    <span className="map-pin__heart-num">{pin.label}</span>
-                  </span>
-                  <span className="map-pin__shadow" />
-                </span>
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+    <div className={touchMap ? 'map-canvas map-canvas--touch' : 'map-canvas'}>
+      <div ref={containerRef} className="map-canvas__map" />
       {!touchMap && <div className="map-canvas__tint" aria-hidden="true" />}
       {error && (
         <div className="map-canvas__error">
