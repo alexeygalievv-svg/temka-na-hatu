@@ -576,9 +576,59 @@ function commitCssPinch(
   }
 }
 
+function snapshotMapVisual(mapEl: HTMLElement): HTMLElement {
+  const rect = mapEl.getBoundingClientRect();
+  const width = Math.max(1, Math.round(rect.width));
+  const height = Math.max(1, Math.round(rect.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  canvas.className = 'map-canvas__pinch-shot';
+  const ctx = canvas.getContext('2d', { alpha: false });
+  if (ctx) {
+    ctx.fillStyle = '#e6e0d4';
+    ctx.fillRect(0, 0, width, height);
+    let drew = 0;
+    mapEl.querySelectorAll('canvas, img').forEach((node) => {
+      const box = node.getBoundingClientRect();
+      if (box.width < 2 || box.height < 2) return;
+      try {
+        if (node instanceof HTMLCanvasElement && node.width > 0) {
+          ctx.drawImage(node, box.left - rect.left, box.top - rect.top, box.width, box.height);
+          drew += 1;
+        } else if (node instanceof HTMLImageElement && node.naturalWidth > 0) {
+          ctx.drawImage(node, box.left - rect.left, box.top - rect.top, box.width, box.height);
+          drew += 1;
+        }
+      } catch {
+        /* кросс-доменный тайл */
+      }
+    });
+    if (drew > 0) return canvas;
+  }
+
+  const clone = mapEl.cloneNode(true) as HTMLElement;
+  clone.className = 'map-canvas__pinch-shot';
+  clone.style.pointerEvents = 'none';
+  const srcCanvases = mapEl.querySelectorAll('canvas');
+  const dstCanvases = clone.querySelectorAll('canvas');
+  srcCanvases.forEach((src, index) => {
+    const dst = dstCanvases[index];
+    if (!(dst instanceof HTMLCanvasElement)) return;
+    dst.width = src.width;
+    dst.height = src.height;
+    try {
+      dst.getContext('2d')?.drawImage(src, 0, 0);
+    } catch {
+      /* пропускаем */
+    }
+  });
+  return clone;
+}
+
 /**
- * Свой щипок вместо behavior.multiTouch: CSS transform на контейнере (60fps),
- * setCenter/setZoom Яндекса — один раз после отпускания пальцев.
+ * Свой щипок: живую карту Яндекса не масштабируем. Крутится снимок,
+ * setCenter — один раз после отпускания, пока снимок ещё на экране.
  */
 function attachCssPinch(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -592,28 +642,38 @@ function attachCssPinch(
   let raf = 0;
   let dragDisabled = false;
   let panHiding = false;
+  let committing = false;
+  let overlay: HTMLDivElement | null = null;
+  let shot: HTMLElement | null = null;
 
   const hideForPan = () => {
-    if (pinch || panHiding) return;
+    if (pinch || committing || panHiding) return;
     panHiding = true;
     setMapGesturing(gesturingRef, true);
   };
 
   const showAfterPan = () => {
-    if (pinch || !panHiding) return;
+    if (pinch || committing || !panHiding) return;
     panHiding = false;
     setMapGesturing(gesturingRef, false);
     onGestureEnd?.();
   };
 
+  const dropOverlay = () => {
+    overlay?.remove();
+    overlay = null;
+    shot = null;
+    mapEl.style.visibility = '';
+  };
+
   const paint = () => {
     raf = 0;
-    if (!pinch) return;
-    mapEl.style.transform = `translate(${pinch.panX}px, ${pinch.panY}px) scale(${pinch.scale})`;
+    if (!pinch || !shot) return;
+    shot.style.transform = `translate(${pinch.panX}px, ${pinch.panY}px) scale(${pinch.scale})`;
   };
 
   const begin = (event: TouchEvent) => {
-    if (event.touches.length < 2 || pinch) return;
+    if (event.touches.length < 2 || pinch || committing) return;
     const a = event.touches[0];
     const b = event.touches[1];
     const dist0 = touchDistance(a, b);
@@ -627,6 +687,17 @@ function attachCssPinch(
     } catch {
       dragDisabled = false;
     }
+
+    dropOverlay();
+    shot = snapshotMapVisual(mapEl);
+    shot.style.transformOrigin = `${mid.x}px ${mid.y}px`;
+    shot.style.transform = 'translate(0px, 0px) scale(1)';
+    overlay = document.createElement('div');
+    overlay.className = 'map-canvas__pinch-proxy';
+    overlay.appendChild(shot);
+    root.appendChild(overlay);
+    mapEl.style.visibility = 'hidden';
+
     pinch = {
       dist0,
       ox: mid.x,
@@ -637,9 +708,6 @@ function attachCssPinch(
       panX: 0,
       panY: 0,
     };
-    mapEl.style.willChange = 'transform';
-    mapEl.style.transformOrigin = `${mid.x}px ${mid.y}px`;
-    mapEl.style.transform = 'translate(0px, 0px) scale(1)';
     setMapGesturing(gesturingRef, true);
   };
 
@@ -662,7 +730,7 @@ function attachCssPinch(
   };
 
   const finish = () => {
-    if (!pinch) return;
+    if (!pinch || committing) return;
     if (raf) {
       window.cancelAnimationFrame(raf);
       raf = 0;
@@ -670,9 +738,7 @@ function attachCssPinch(
     const next = commitCssPinch(map, pinch);
     pinch = null;
     panHiding = false;
-    mapEl.style.willChange = '';
-    mapEl.style.transform = '';
-    mapEl.style.transformOrigin = '';
+    committing = true;
     if (next) {
       try {
         map.setCenter(next.center, next.zoom, { duration: 0 });
@@ -680,22 +746,28 @@ function attachCssPinch(
         /* зум останется как был */
       }
     }
-    if (dragDisabled) {
-      try {
-        map.behaviors.enable('drag');
-      } catch {
-        /* drag и так включён */
+    const reveal = () => {
+      dropOverlay();
+      if (dragDisabled) {
+        try {
+          map.behaviors.enable('drag');
+        } catch {
+          /* drag и так включён */
+        }
+        dragDisabled = false;
       }
-      dragDisabled = false;
-    }
-    window.requestAnimationFrame(() => {
+      committing = false;
       setMapGesturing(gesturingRef, false);
       onGestureEnd?.();
-    });
+    };
+    void waitForVisibleTiles(map, 700).then(reveal);
   };
 
   const onTouchStart = (event: TouchEvent) => {
-    if (event.touches.length >= 2) begin(event);
+    if (event.touches.length >= 2) {
+      event.preventDefault();
+      begin(event);
+    }
   };
   const onTouchMove = (event: TouchEvent) => {
     move(event);
@@ -704,7 +776,7 @@ function attachCssPinch(
     if (pinch && event.touches.length < 2) finish();
   };
 
-  root.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
+  root.addEventListener('touchstart', onTouchStart, { capture: true, passive: false });
   root.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
   root.addEventListener('touchend', onTouchEnd, { capture: true, passive: true });
   root.addEventListener('touchcancel', onTouchEnd, { capture: true, passive: true });
@@ -724,9 +796,7 @@ function attachCssPinch(
     }
     if (raf) window.cancelAnimationFrame(raf);
     pinch = null;
-    mapEl.style.willChange = '';
-    mapEl.style.transform = '';
-    mapEl.style.transformOrigin = '';
+    dropOverlay();
     if (dragDisabled) {
       try {
         map.behaviors.enable('drag');
