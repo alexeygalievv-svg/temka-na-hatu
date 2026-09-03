@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="index,follow" />
+    <meta
+      name="description"
+      content="Карта воспоминаний — подарочная интерактивная карта мест в Telegram. Публикация карты 199 ₽."
+    />
+    <title>Карта воспоминаний — подарочная карта мест</title>
+    <style>
+      :root {
+        --paper: #f5efe3;
+        --card: #fffaf1;
+        --ink: #33261c;
+        --ink-soft: #7a6a58;
+        --terra: #c25932;
+        --line: rgba(58, 40, 25, 0.12);
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: Georgia, 'Times New Roman', serif;
+        background: var(--paper);
+        color: var(--ink);
+        line-height: 1.55;
+      }
+      a { color: var(--terra); }
+      .site-header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: rgba(245, 239, 227, 0.96);
+        border-bottom: 1px solid var(--line);
+        padding: 14px 20px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px 18px;
+        font-size: 14px;
+      }
+      .site-header a { text-decoration: none; }
+      .site-header a:hover { text-decoration: underline; }
+      main {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 24px 20px 48px;
+      }
+      .card {
+        background: var(--card);
+        border-radius: 24px;
+        box-shadow: 0 18px 50px rgba(58, 40, 25, 0.14);
+        padding: 36px 28px 32px;
+        margin-bottom: 24px;
+      }
+      .eyebrow {
+        margin: 0 0 8px;
+        color: var(--terra);
+        font-size: 13px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      h1 { margin: 0 0 12px; font-size: 34px; font-weight: 600; }
+      h2 { margin: 0 0 10px; font-size: 22px; }
+      h3 { margin: 18px 0 8px; font-size: 18px; }
+      .lead { margin: 0 0 20px; color: var(--ink-soft); font-size: 17px; }
+      .price {
+        display: inline-block;
+        margin: 8px 0 20px;
+        padding: 10px 18px;
+        border-radius: 999px;
+        background: rgba(194, 89, 50, 0.12);
+        color: var(--terra);
+        font-size: 20px;
+        font-weight: 700;
+      }
+      ul, ol { margin: 0 0 16px; padding-left: 22px; }
+      li { margin-bottom: 8px; }
+      p { margin: 0 0 12px; }
+      dl { margin: 0; }
+      dt { margin: 0 0 4px; color: var(--ink-soft); font-size: 13px; }
+      dd { margin: 0 0 16px; font-size: 17px; }
+      .inn { font-size: 22px; font-weight: 700; letter-spacing: 0.04em; }
+      .btn {
+        display: inline-block;
+        margin-top: 8px;
+        padding: 14px 22px;
+        border-radius: 999px;
+        background: var(--terra);
+        color: #fff7ec !important;
+        text-decoration: none;
+        font-weight: 700;
+      }
+      .service-box {
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 18px;
+        margin-bottom: 14px;
+      }
+      .service-box p { margin: 0; color: var(--ink-soft); }
+      .legal-links {
+        margin-top: 20px;
+        padding-top: 16px;
+        border-top: 1px solid var(--line);
+        font-size: 14px;
+        color: var(--ink-soft);
+      }
+      footer {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 0 20px 32px;
+        color: var(--ink-soft);
+        font-size: 13px;
+        text-align: center;
+      }
+      section:target { scroll-margin-top: 72px; }
+    </style>
+  </head>
+  <body>
+    <nav class="site-header" aria-label="Разделы сайта">
+      <a href="#main"><strong>Главная</strong></a>
+      <a href="#delivery">Получение</a>
+      <a href="#terms">Соглашение</a>
+      <a href="#requisites">Реквизиты</a>
+      <a href="#contacts">Контакты</a>
+    </nav>
+
+    <main>
+      <section id="main" class="card" aria-labelledby="main-title">
+        <p class="eyebrow">Онлайн-сервис</p>
+        <h1 id="main-title">Карта воспоминаний</h1>
+        <p class="lead">
+          Сервис для создания подарочной интерактивной карты мест: вы отмечаете точки с фото и
+          историями, а близкий человек открывает ссылку и проходит по ним в анимированном туре.
+        </p>
+        <div class="service-box">
+          <h2>Услуга</h2>
+          <h3>Публикация карты воспоминаний</h3>
+          <p>
+            Создание и публикация персональной карты в Telegram Mini App с уникальной ссылкой для
+            получателя. Цифровая услуга, результат предоставляется в электронном виде сразу после
+            оплаты.
+          </p>
+          <p class="price">199 ₽ за одну карту</p>
+        </div>
+        <h2>Как это работает</h2>
+        <ol>
+          <li>Откройте сервис в Telegram и соберите карту: точки, фото, тексты, открытие.</li>
+          <li>Оплатите публикацию картой или через СБП.</li>
+          <li>Получите персональную ссылку и отправьте её получателю.</li>
+          <li>Получатель открывает ссылку и смотрит карту в Telegram.</li>
+        </ol>
+        <h2>Что входит в услугу</h2>
+        <ul>
+          <li>Хранение опубликованной карты на сервере сервиса.</li>
+          <li>Персональная ссылка для просмотра получателем.</li>
+          <li>Анимированный показ точек на карте.</li>
+        </ul>
+        <p><a class="btn" href="https://t.me/foryougift67Bot/memories">Открыть в Telegram</a></p>
+        <p class="legal-links">
+          Используя сервис, вы соглашаетесь с
+          <a href="#terms">пользовательским соглашением и офертой</a>.
+          <a href="#requisites">Реквизиты и ИНН</a> ·
+          <a href="#contacts">Контакты</a>
+        </p>
+      </section>
+
+      <section id="delivery" class="card" aria-labelledby="delivery-title">
+        <p class="eyebrow">Цифровая услуга</p>
+        <h2 id="delivery-title">Получение заказа</h2>
+        <p class="lead">
+          Услуга оказывается в электронном виде. Физическая доставка не предусмотрена.
+        </p>
+        <h3>Как вы получаете результат после оплаты</h3>
+        <ol>
+          <li>После успешной оплаты в Telegram Mini App карта публикуется автоматически.</li>
+          <li>
+            На экране сразу отображается персональная ссылка вида
+            <code>t.me/foryougift67Bot/memories?startapp=map_…</code>.
+          </li>
+          <li>Вы копируете ссылку и отправляете её получателю в мессенджер.</li>
+          <li>Получатель открывает ссылку в Telegram и просматривает карту.</li>
+        </ol>
+        <h3>Срок предоставления</h3>
+        <p>
+          Ссылка предоставляется сразу после подтверждения оплаты, обычно в течение нескольких
+          секунд.
+        </p>
+        <h3>Если ссылка не появилась</h3>
+        <p>
+          Напишите на
+          <a href="mailto:galievalexeygaliev@yandex.com">galievalexeygaliev@yandex.com</a>
+          или позвоните <a href="tel:+79963688158">+7 996 368-81-58</a>.
+        </p>
+      </section>
+
+      <section id="terms" class="card" aria-labelledby="terms-title">
+        <p class="eyebrow">Правовая информация</p>
+        <h2 id="terms-title">Пользовательское соглашение и публичная оферта</h2>
+        <p class="lead">
+          Настоящий документ регулирует условия использования онлайн-сервиса «Карта воспоминаний»
+          и является публичной офертой в соответствии со ст. 437 Гражданского кодекса РФ.
+        </p>
+
+        <h3>1. Термины</h3>
+        <p>
+          <strong>Сервис</strong> — Telegram Mini App «Карта воспоминаний» и сайт
+          <a href="https://alexeygalievv-svg.github.io/memory-map/">alexeygalievv-svg.github.io/memory-map</a>.
+          <strong>Исполнитель</strong> — Галиев Алексей Юрьевич, самозанятый, ИНН 345947188258.
+          <strong>Пользователь / Заказчик</strong> — лицо, использующее Сервис.
+          <strong>Карта</strong> — созданный Пользователем набор точек, фото и текстов.
+        </p>
+
+        <h3>2. Предмет</h3>
+        <p>
+          Исполнитель предоставляет Пользователю доступ к Сервису для создания карты и, после
+          оплаты, публикует карту и выдаёт персональную ссылку для просмотра получателем.
+        </p>
+
+        <h3>3. Стоимость и оплата</h3>
+        <p>
+          Стоимость публикации одной карты — <strong>199 (сто девяносто девять) рублей</strong>.
+          Оплата производится через платёжный сервис ЮKassa банковской картой или через СБП.
+          Цена указана на сайте и действует на момент оплаты.
+        </p>
+
+        <h3>4. Порядок оказания услуги</h3>
+        <ol>
+          <li>Пользователь создаёт карту в Telegram Mini App.</li>
+          <li>Пользователь оплачивает публикацию.</li>
+          <li>После подтверждения оплаты Пользователю предоставляется ссылка на опубликованную карту.</li>
+        </ol>
+        <p>Подробности — в разделе <a href="#delivery">«Получение заказа»</a>.</p>
+
+        <h3>5. Момент оказания услуги</h3>
+        <p>
+          Услуга считается оказанной с момента предоставления Пользователю рабочей ссылки на
+          опубликованную карту.
+        </p>
+
+        <h3>6. Условия использования Сервиса</h3>
+        <ul>
+          <li>Пользователь размещает только законный контент, на который имеет права.</li>
+          <li>Запрещены оскорбительные, незаконные и чужие материалы без разрешения правообладателя.</li>
+          <li>Пользователь несёт ответственность за содержание загруженных фото и текстов.</li>
+          <li>Исполнитель вправе удалить карту при нарушении закона или настоящего соглашения.</li>
+        </ul>
+
+        <h3>7. Персональные данные</h3>
+        <p>
+          Для работы Сервиса обрабатываются данные Telegram-профиля (имя, идентификатор),
+          загруженные фото, тексты и координаты точек. Данные хранятся на сервере Исполнителя
+          для предоставления услуги. По вопросам обработки данных обращайтесь:
+          <a href="mailto:galievalexeygaliev@yandex.com">galievalexeygaliev@yandex.com</a>.
+        </p>
+
+        <h3>8. Возврат средств</h3>
+        <p>
+          Услуга цифровая и оказывается сразу после оплаты. Возврат возможен, если услуга не была
+          оказана по вине Исполнителя (ссылка не предоставлена). Обращение — на
+          <a href="mailto:galievalexeygaliev@yandex.com">galievalexeygaliev@yandex.com</a>
+          в течение 7 дней с указанием даты и суммы оплаты.
+        </p>
+
+        <h3>9. Ограничение ответственности</h3>
+        <p>
+          Сервис предоставляется «как есть». Исполнитель не отвечает за перебои связи, работу
+          Telegram, платёжных систем и действий третьих лиц, но стремится обеспечить доступность
+          опубликованных карт.
+        </p>
+
+        <h3>10. Изменение условий</h3>
+        <p>
+          Исполнитель вправе обновлять настоящее соглашение, публикуя новую редакцию на этой
+          странице. Актуальная версия всегда доступна по адресу
+          <a href="#terms">https://alexeygalievv-svg.github.io/memory-map/#terms</a>.
+        </p>
+
+        <h3>11. Контакты и претензии</h3>
+        <p>
+          Галиев Алексей Юрьевич,
+          <a href="mailto:galievalexeygaliev@yandex.com">galievalexeygaliev@yandex.com</a>,
+          <a href="tel:+79963688158">+7 996 368-81-58</a>.
+        </p>
+
+        <h3>12. Акцепт оферты</h3>
+        <p>
+          Оплата услуги и/или использование Сервиса означает полное и безоговорочное принятие
+          условий настоящего пользовательского соглашения и публичной оферты.
+        </p>
+        <p style="color: var(--ink-soft); font-size: 14px;">Дата публикации: 3 сентября 2026 г.</p>
+      </section>
+
+      <section id="requisites" class="card" aria-labelledby="requisites-title">
+        <p class="eyebrow">Платежи</p>
+        <h2 id="requisites-title">Реквизиты</h2>
+        <p class="lead">Платежи принимает самозанятый. На странице указан ИНН получателя оплаты.</p>
+        <dl>
+          <dt>ФИО</dt>
+          <dd>Галиев Алексей Юрьевич</dd>
+          <dt>Статус</dt>
+          <dd>Самозанятый (налог на профессиональный доход)</dd>
+          <dt>ИНН</dt>
+          <dd class="inn">345947188258</dd>
+          <dt>Электронная почта</dt>
+          <dd><a href="mailto:galievalexeygaliev@yandex.com">galievalexeygaliev@yandex.com</a></dd>
+          <dt>Телефон</dt>
+          <dd><a href="tel:+79963688158">+7 996 368-81-58</a></dd>
+        </dl>
+      </section>
+
+      <section id="contacts" class="card" aria-labelledby="contacts-title">
+        <p class="eyebrow">Связь</p>
+        <h2 id="contacts-title">Контакты</h2>
+        <p class="lead">По вопросам оплаты, публикации и поддержки.</p>
+        <dl>
+          <dt>Исполнитель</dt>
+          <dd>Галиев Алексей Юрьевич</dd>
+          <dt>Электронная почта</dt>
+          <dd><a href="mailto:galievalexeygaliev@yandex.com">galievalexeygaliev@yandex.com</a></dd>
+          <dt>Телефон</dt>
+          <dd><a href="tel:+79963688158">+7 996 368-81-58</a></dd>
+          <dt>Telegram</dt>
+          <dd><a href="https://t.me/foryougift67Bot">@foryougift67Bot</a></dd>
+          <dt>Сервис</dt>
+          <dd><a href="https://t.me/foryougift67Bot/memories">Открыть Mini App</a></dd>
+        </dl>
+      </section>
+    </main>
+
+    <footer>
+      © Карта воспоминаний · ИНН 345947188258 ·
+      <a href="#terms">Соглашение</a>
+    </footer>
+  </body>
+</html>
