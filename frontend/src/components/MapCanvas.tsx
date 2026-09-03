@@ -226,6 +226,14 @@ const FLIGHT_STAGE_HOLD_MS = 1000;
 
 const sleep = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 
+/** Пауза между этапами перелёта: всегда одна и та же, тайлы грузятся параллельно. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function holdFlightStage(map: any, stillFlying: () => boolean): Promise<boolean> {
+  void waitForVisibleTiles(map, FLIGHT_STAGE_HOLD_MS);
+  await sleep(FLIGHT_STAGE_HOLD_MS);
+  return stillFlying();
+}
+
 type TileLogEntry = {
   t: number;
   kind: string;
@@ -1140,7 +1148,7 @@ export function MapCanvas({
               );
             }
             if (!stillFlying()) return;
-            await waitForVisibleTiles(map, FIRST_TILES_TIMEOUT_MS);
+            void waitForVisibleTiles(map, FLIGHT_STAGE_HOLD_MS);
             return;
           }
 
@@ -1149,53 +1157,43 @@ export function MapCanvas({
             ? overviewForFlight(ymaps, map, from, dest, fromZoom, targetZoom)
             : { center: dest, zoom: Math.max(3, targetZoom - 6) };
           const wideZoom = overview.zoom;
-          const outMs = Math.max(700, Math.round(animDuration * 0.35));
-          const panMs = Math.max(900, Math.round(animDuration * 0.5));
-          const inMs = Math.max(1000, Math.round(animDuration * 0.55));
+          const stageMs = Math.max(900, Math.round(animDuration * 0.5));
 
           if (fromZoom > wideZoom + 0.2) {
-            logTile('FLY_OUT', { center: from, zoom: wideZoom, outMs });
+            logTile('FLY_OUT', { center: from, zoom: wideZoom, outMs: stageMs });
             await waitForAnimation(
               map.setCenter(from, wideZoom, {
-                duration: outMs,
+                duration: stageMs,
                 timingFunction: 'ease-in-out',
               }),
-              outMs,
+              stageMs,
             );
-            if (!stillFlying()) return;
-            await waitForVisibleTiles(map, 6000);
-            if (!stillFlying()) return;
+            if (!(await holdFlightStage(map, stillFlying))) return;
             logTile('FLY_OUT_READY', { zoom: map.getZoom?.(), center: map.getCenter?.() });
-            await sleep(FLIGHT_STAGE_HOLD_MS);
-            if (!stillFlying()) return;
           }
 
-          logTile('FLY_PAN', { dest, zoom: wideZoom, panMs });
+          logTile('FLY_PAN', { dest, zoom: wideZoom, panMs: stageMs });
           await waitForAnimation(
             map.panTo(dest, {
-              duration: panMs,
+              duration: stageMs,
               timingFunction: 'ease-in-out',
               flying: false,
               safe: false,
             }),
-            panMs,
+            stageMs,
           );
-          if (!stillFlying()) return;
-          await waitForVisibleTiles(map, 8000);
-          if (!stillFlying()) return;
-          await sleep(FLIGHT_STAGE_HOLD_MS);
-          if (!stillFlying()) return;
+          if (!(await holdFlightStage(map, stillFlying))) return;
 
-          logTile('FLY_IN', { dest, zoom: targetZoom, inMs });
+          logTile('FLY_IN', { dest, zoom: targetZoom, inMs: stageMs });
           await waitForAnimation(
             map.setCenter(dest, targetZoom, {
-              duration: inMs,
+              duration: stageMs,
               timingFunction: 'ease-in-out',
             }),
-            inMs,
+            stageMs,
           );
           if (!stillFlying()) return;
-          await waitForVisibleTiles(map, FIRST_TILES_TIMEOUT_MS);
+          void waitForVisibleTiles(map, FLIGHT_STAGE_HOLD_MS);
         } finally {
           logTile('FLY_END', {
             elapsedMs: Math.round(performance.now() - startedAt),

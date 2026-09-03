@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '../components/Button';
 import { copyText, haptic, shareLink } from '../telegram';
+import { LEGAL_REQUISITES_PATH, LEGAL_TERMS_PATH } from '../lib/legal';
 
 interface LinkScreenProps {
   link: string;
@@ -101,6 +102,15 @@ export function LinkScreen({ link, title, onBack, onReset }: LinkScreenProps) {
           >
             Сбросить всё
           </Button>
+          <p className="link-screen__legal">
+            <a href={LEGAL_TERMS_PATH}>
+              Условия и оферта
+            </a>
+            <span aria-hidden="true">·</span>
+            <a href={LEGAL_REQUISITES_PATH}>
+              Реквизиты
+            </a>
+          </p>
         </div>
       </motion.div>
     </div>

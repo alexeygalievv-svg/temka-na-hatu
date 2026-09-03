@@ -10,7 +10,8 @@ import { BuilderScreen } from './screens/BuilderScreen';
 import { PreviewScreen } from './screens/PreviewScreen';
 import { ViewerScreen } from './screens/ViewerScreen';
 import { LinkScreen } from './screens/LinkScreen';
-import { isRequisitesPath, RequisitesScreen } from './screens/RequisitesScreen';
+import { isLegalPath } from './lib/legal';
+import { LegalScreen } from './screens/LegalScreen';
 
 type Route =
   | { name: 'builder' }
@@ -194,10 +195,10 @@ export default function App() {
     haptic('soft');
   }
 
-  if (isRequisitesPath()) {
+  if (isLegalPath()) {
     return (
       <div className="app">
-        <RequisitesScreen />
+        <LegalScreen />
       </div>
     );
   }
