@@ -6,9 +6,9 @@ export const LEGAL_DOCS_URL = 'https://alexeygalievv-svg.github.io/memory-map/';
 export const LEGAL_DOCS_TERMS_URL = `${LEGAL_DOCS_URL}#terms`;
 export const LEGAL_DOCS_REQUISITES_URL = `${LEGAL_DOCS_URL}#requisites`;
 
-/** Ссылки внутри основного приложения. */
-export const LEGAL_TERMS_PATH = '/legal#legal-terms';
-export const LEGAL_REQUISITES_PATH = '/legal#legal-requisites';
+/** Ссылки внутри основного приложения (query-параметр работает на Render без SPA rewrite). */
+export const LEGAL_TERMS_PATH = '/?page=legal#legal-terms';
+export const LEGAL_REQUISITES_PATH = '/?page=legal#legal-requisites';
 
 export function isLegalPath(): boolean {
   const path = window.location.pathname.replace(/\/+$/, '').toLowerCase();
