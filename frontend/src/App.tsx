@@ -10,6 +10,7 @@ import { BuilderScreen } from './screens/BuilderScreen';
 import { PreviewScreen } from './screens/PreviewScreen';
 import { ViewerScreen } from './screens/ViewerScreen';
 import { LinkScreen } from './screens/LinkScreen';
+import { isRequisitesPath, RequisitesScreen } from './screens/RequisitesScreen';
 
 type Route =
   | { name: 'builder' }
@@ -191,6 +192,14 @@ export default function App() {
     setPublishing(null);
     setRoute({ name: 'builder' });
     haptic('soft');
+  }
+
+  if (isRequisitesPath()) {
+    return (
+      <div className="app">
+        <RequisitesScreen />
+      </div>
+    );
   }
 
   return (
