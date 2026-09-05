@@ -44,6 +44,11 @@ export function initTelegram(): void {
   }
 }
 
+/** Приложение открыто внутри Telegram Mini App, а не в обычном браузере. */
+export function isTelegramMiniApp(): boolean {
+  return Boolean(getRawInitData());
+}
+
 /** Сырая строка initData — уходит на backend в заголовке Authorization. */
 export function getRawInitData(): string | null {
   try {

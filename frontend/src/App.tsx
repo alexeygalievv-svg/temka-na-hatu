@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { DraftPoint, IntroSettings, PublishProgress } from './types';
 import { DEFAULT_INTRO } from './types';
-import { getStartParam, getUserName, haptic } from './telegram';
+import { getStartParam, getUserName, haptic, isTelegramMiniApp } from './telegram';
 import { addPoint, createMap, uploadPhoto } from './api';
 import { compressImage, fileFromPreview, fileToDataUrl } from './lib/compressImage';
 import { clearDraft, loadDraft, restorePoints, saveDraftDebounced, saveDraftNow } from './lib/draftStorage';
@@ -193,6 +193,20 @@ export default function App() {
     setPublishing(null);
     setRoute({ name: 'builder' });
     haptic('soft');
+  }
+
+  const showMiniApp =
+    isTelegramMiniApp() ||
+    Boolean(viewMapId) ||
+    isLegalPath() ||
+    new URLSearchParams(window.location.search).get('app') === '1';
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('show-app', showMiniApp);
+  }, [showMiniApp]);
+
+  if (!showMiniApp) {
+    return null;
   }
 
   if (isLegalPath()) {

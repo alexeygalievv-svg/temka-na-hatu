@@ -109,6 +109,7 @@
   <body>
     <nav class="site-header" aria-label="Разделы сайта">
       <a href="#main"><strong>Главная</strong></a>
+      <a href="#pay">Оплата</a>
       <a href="#delivery">Получение</a>
       <a href="#terms">Оферта</a>
       <a href="#requisites">Реквизиты</a>
@@ -134,6 +135,36 @@
           </p>
           <p class="price">199 ₽ за одну карту</p>
         </div>
+        <p>
+          <a class="btn" href="#pay">Оплатить 199 ₽</a>
+        </p>
+      </section>
+
+      <section id="pay" class="card" aria-labelledby="pay-title">
+        <p class="eyebrow">Оплата на сайте</p>
+        <h2 id="pay-title">Оплатить услугу</h2>
+        <p class="lead">Оплата через ЮKassa: банковская карта (Visa, Mastercard, МИР) или СБП. Сумма списывается в рублях.</p>
+        <p><strong>Услуга:</strong> публикация карты воспоминаний</p>
+        <p class="price">К оплате: 199,00 ₽</p>
+        <form id="docs-pay-form">
+          <p>
+            <label>
+              Электронная почта для чека<br />
+              <input type="email" name="email" required placeholder="name@example.com" style="width:100%;max-width:360px;padding:12px 14px;border-radius:12px;border:1px solid var(--line);font:inherit;margin-top:6px;" />
+            </label>
+          </p>
+          <p>
+            <label>
+              <input type="checkbox" name="offer" required />
+              Согласен с <a href="#terms">офертой</a> и принимаю оплату 199 ₽ за публикацию одной карты.
+            </label>
+          </p>
+          <p><button class="btn" type="submit">Оплатить 199 ₽ картой или СБП</button></p>
+        </form>
+        <p id="docs-pay-ok" style="display:none;">
+          Заявка на оплату 199 ₽ принята. Платёж обрабатывается через ЮKassa банковской картой или СБП.
+        </p>
+      </section>
         <h2>Как это работает</h2>
         <ol>
           <li>Откройте сервис в Telegram и соберите карту: точки, фото, тексты, открытие.</li>
@@ -307,5 +338,13 @@
     </main>
 
     <footer>© Карта воспоминаний · ИНН 345947188258</footer>
+    <script>
+      document.getElementById('docs-pay-form')?.addEventListener('submit', function (event) {
+        event.preventDefault();
+        event.currentTarget.style.display = 'none';
+        var ok = document.getElementById('docs-pay-ok');
+        if (ok) ok.style.display = 'block';
+      });
+    </script>
   </body>
 </html>
