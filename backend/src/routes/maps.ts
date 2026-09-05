@@ -1,15 +1,13 @@
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import { customAlphabet } from 'nanoid';
 import type { PostgrestError } from '@supabase/supabase-js';
 import { env } from '../env.js';
+import { requireUser } from '../httpAuth.js';
 import { supabase } from '../supabase.js';
-import { validateInitData, type TelegramUser } from '../telegramAuth.js';
-import { escapeHtml, mapOpenLink, mapShareLink, sendMessage } from '../telegramBot.js';
+import { mapShareLink } from '../telegramBot.js';
 
 /** Только буквы и цифры — безопасно для параметра startapp. */
 const generateMapId = customAlphabet('0123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz', 12);
-
-const DEV_USER: TelegramUser = { id: 1, first_name: 'Dev' };
 
 function isMissingIntroColumns(error: PostgrestError): boolean {
   const text = `${error.message ?? ''} ${error.details ?? ''} ${error.hint ?? ''}`.toLowerCase();
@@ -79,25 +77,7 @@ function throwDbError(error: PostgrestError, context: string): never {
   throw err;
 }
 
-function authenticate(request: FastifyRequest): TelegramUser | null {
-  const header = request.headers.authorization;
-  if (!header) return null;
-  if (env.allowDevAuth && header === 'dev') return DEV_USER;
-  const [scheme, ...rest] = header.split(' ');
-  if (scheme !== 'tma') return null;
-  return validateInitData(rest.join(' '), env.telegramBotToken);
-}
-
-async function requireUser(request: FastifyRequest, reply: FastifyReply): Promise<TelegramUser | null> {
-  const user = authenticate(request);
-  if (!user) {
-    await reply.code(401).send({ error: 'Invalid or missing Telegram init data' });
-    return null;
-  }
-  return user;
-}
-
-async function requireOwnedMap(mapId: string, user: TelegramUser, reply: FastifyReply) {
+async function requireOwnedMap(mapId: string, user: { id: number }, reply: FastifyReply) {
   const { data: map, error } = await supabase
     .from('maps')
     .select('id, owner_tg_id')
@@ -177,6 +157,7 @@ export async function mapRoutes(app: FastifyInstance) {
       intro_message: body.introMessage?.trim() || null,
       intro_button: body.introButton?.trim() || 'Открыть карту',
       intro_photo_url: introPhotoUrl,
+      status: 'draft',
     });
 
     if (error) {
@@ -189,6 +170,7 @@ export async function mapRoutes(app: FastifyInstance) {
           intro_eyebrow: body.introEyebrow?.trim() || 'Для тебя собрал',
           intro_message: body.introMessage?.trim() || null,
           intro_button: body.introButton?.trim() || 'Открыть карту',
+          status: 'draft',
         });
         if (noPhotoError) {
           if (isMissingIntroColumns(noPhotoError)) {
@@ -197,6 +179,7 @@ export async function mapRoutes(app: FastifyInstance) {
               owner_tg_id: user.id,
               author_name: authorName,
               title: body.title?.trim() || 'Карта воспоминаний',
+              status: 'draft',
             });
             if (fallbackError) throwDbError(fallbackError, 'Не удалось создать карту');
           } else {
@@ -209,6 +192,7 @@ export async function mapRoutes(app: FastifyInstance) {
           owner_tg_id: user.id,
           author_name: authorName,
           title: body.title?.trim() || 'Карта воспоминаний',
+          status: 'draft',
         });
         if (fallbackError) throwDbError(fallbackError, 'Не удалось создать карту');
       } else {
@@ -217,22 +201,11 @@ export async function mapRoutes(app: FastifyInstance) {
     }
 
     const link = mapShareLink(id);
-    const title = escapeHtml(body.title?.trim() || 'Карта воспоминаний');
-    void sendMessage(
-      user.id,
-      `Карта «${title}» готова!\n\nСсылка для получателя:\n${link}`,
-      {
-        reply_markup: {
-          inline_keyboard: [[{ text: 'Открыть карту', url: mapOpenLink(id) }]],
-        },
-      },
-    ).catch(() => {
-      /* пользователь мог ещё не писать боту /start */
-    });
 
     return reply.code(201).send({
       id,
       link,
+      status: 'draft',
       introPhotoUrl,
     });
   });
@@ -342,7 +315,7 @@ export async function mapRoutes(app: FastifyInstance) {
 
     const { data: map, error: mapError } = await supabase
       .from('maps')
-      .select('id, title, author_name, intro_eyebrow, intro_message, intro_button, intro_photo_url, created_at')
+      .select('id, title, author_name, intro_eyebrow, intro_message, intro_button, intro_photo_url, created_at, status')
       .eq('id', mapId)
       .maybeSingle();
     if (mapError) {
@@ -399,6 +372,9 @@ export async function mapRoutes(app: FastifyInstance) {
       throwDbError(mapError, 'Не удалось загрузить карту');
     }
     if (!map) return reply.code(404).send({ error: 'Map not found' });
+    if (map.status && map.status !== 'active') {
+      return reply.code(404).send({ error: 'Map not found' });
+    }
 
     return {
       id: map.id,

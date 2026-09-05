@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { DraftPoint, IntroSettings, PublishProgress } from './types';
 import { DEFAULT_INTRO } from './types';
-import { getStartParam, getUserName, haptic, isTelegramMiniApp } from './telegram';
+import { getStartParam, getUserName, haptic } from './telegram';
 import { addPoint, createMap, uploadPhoto } from './api';
 import { compressImage, fileFromPreview, fileToDataUrl } from './lib/compressImage';
 import { clearDraft, loadDraft, restorePoints, saveDraftDebounced, saveDraftNow } from './lib/draftStorage';
@@ -10,12 +10,14 @@ import { BuilderScreen } from './screens/BuilderScreen';
 import { PreviewScreen } from './screens/PreviewScreen';
 import { ViewerScreen } from './screens/ViewerScreen';
 import { LinkScreen } from './screens/LinkScreen';
-import { isLegalPath } from './lib/legal';
+import { isLegalPath, isPayPath } from './lib/legal';
 import { LegalScreen } from './screens/LegalScreen';
+import { PayScreen } from './screens/PayScreen';
 
 type Route =
   | { name: 'builder' }
   | { name: 'preview' }
+  | { name: 'pay' }
   | { name: 'link'; link: string }
   | { name: 'viewer'; mapId: string };
 
@@ -39,9 +41,11 @@ export default function App() {
     return param?.startsWith('map_') ? param.slice(4) : null;
   }, []);
 
-  const [route, setRoute] = useState<Route>(
-    viewMapId ? { name: 'viewer', mapId: viewMapId } : { name: 'builder' },
-  );
+  const [route, setRoute] = useState<Route>(() => {
+    if (viewMapId) return { name: 'viewer', mapId: viewMapId };
+    if (isPayPath()) return { name: 'pay' };
+    return { name: 'builder' };
+  });
   const [mapTitle, setMapTitle] = useState('Наши места');
   const [authorName, setAuthorName] = useState(() => getUserName() ?? '');
   const [intro, setIntro] = useState<IntroSettings>(DEFAULT_INTRO);
@@ -82,9 +86,10 @@ export default function App() {
     saveDraftDebounced({ mapTitle, authorName, intro, points });
   }, [draftReady, viewMapId, mapTitle, authorName, intro, points]);
 
-  async function publish() {
+  async function publish(): Promise<{ id: string; link: string }> {
     const draft = draftRef.current;
-    if (draft.points.length === 0 || publishing) return;
+    if (draft.points.length === 0) throw new Error('Добавьте хотя бы одно место');
+    if (publishing) throw new Error('Публикация уже идёт');
     setPublishError(null);
     try {
       setPublishing({ step: 'map' });
@@ -166,7 +171,7 @@ export default function App() {
         points: publishedPoints,
       });
       haptic('medium');
-      setRoute({ name: 'link', link });
+      return { id, link };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Что-то пошло не так';
       if (message.includes('401') || message.toLowerCase().includes('init data')) {
@@ -174,6 +179,7 @@ export default function App() {
       } else {
         setPublishError(message);
       }
+      throw error instanceof Error ? error : new Error(message);
     } finally {
       setPublishing(null);
     }
@@ -193,20 +199,6 @@ export default function App() {
     setPublishing(null);
     setRoute({ name: 'builder' });
     haptic('soft');
-  }
-
-  const showMiniApp =
-    isTelegramMiniApp() ||
-    Boolean(viewMapId) ||
-    isLegalPath() ||
-    new URLSearchParams(window.location.search).get('app') === '1';
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('show-app', showMiniApp);
-  }, [showMiniApp]);
-
-  if (!showMiniApp) {
-    return null;
   }
 
   if (isLegalPath()) {
@@ -232,7 +224,10 @@ export default function App() {
               points={points}
               onPointsChange={setPoints}
               onPreview={() => setRoute({ name: 'preview' })}
-              onPublish={publish}
+              onPublish={() => {
+                setPublishError(null);
+                setRoute({ name: 'pay' });
+              }}
               onReset={resetAll}
               publishing={publishing}
               publishError={publishError}
@@ -247,6 +242,25 @@ export default function App() {
               authorName={authorName}
               intro={intro}
               points={points}
+              onBack={() => setRoute({ name: 'builder' })}
+            />
+          </Screen>
+        )}
+        {route.name === 'pay' && (
+          <Screen key="pay">
+            <PayScreen
+              mapTitle={mapTitle}
+              prepareMap={
+                isPayPath()
+                  ? undefined
+                  : async () => {
+                      const created = await publish();
+                      return { mapId: created.id, link: created.link };
+                    }
+              }
+              onPaid={(link) => {
+                if (link) setRoute({ name: 'link', link });
+              }}
               onBack={() => setRoute({ name: 'builder' })}
             />
           </Screen>

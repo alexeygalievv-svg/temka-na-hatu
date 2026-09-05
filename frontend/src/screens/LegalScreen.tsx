@@ -1,15 +1,16 @@
-import { APP_URL, LEGAL_DOCS_TERMS_URL, LEGAL_DOCS_URL } from '../lib/legal';
+import { APP_URL, LEGAL_DOCS_TERMS_URL, LEGAL_DOCS_URL, LEGAL_PAY_PATH } from '../lib/legal';
 
 export function LegalScreen() {
   return (
     <div className="legal">
       <nav className="legal__nav" aria-label="Разделы">
         <a href="#legal-main">Главная</a>
-        <a href="#legal-pay">Оплата</a>
         <a href="#legal-delivery">Получение</a>
         <a href="#legal-terms">Оферта</a>
+        <a href="#legal-privacy">Конфиденциальность</a>
         <a href="#legal-requisites">Реквизиты</a>
         <a href="#legal-contacts">Контакты</a>
+        <a href={LEGAL_PAY_PATH}>Оплата</a>
       </nav>
 
       <section id="legal-main" className="legal__card">
@@ -29,51 +30,13 @@ export function LegalScreen() {
           </p>
           <p className="legal__price">199 ₽ за одну карту</p>
         </div>
-        <p>
-          <a className="legal__btn" href="#legal-pay">
+        <p className="legal__actions">
+          <a className="legal__btn" href={LEGAL_PAY_PATH}>
             Оплатить 199 ₽
           </a>
-        </p>
-      </section>
-
-      <section id="legal-pay" className="legal__card">
-        <p className="legal__eyebrow">Оплата на сайте</p>
-        <h2>Оплатить услугу</h2>
-        <p className="legal__lead">
-          Оплата через ЮKassa: банковская карта (Visa, Mastercard, МИР) или СБП. Сумма списывается в
-          рублях.
-        </p>
-        <div className="legal__box">
-          <p>Услуга: публикация карты воспоминаний</p>
-          <p className="legal__price">К оплате: 199,00 ₽</p>
-        </div>
-        <form
-          className="legal__pay-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const form = event.currentTarget;
-            form.hidden = true;
-            const ok = form.parentElement?.querySelector('.legal__pay-ok');
-            if (ok) ok.removeAttribute('hidden');
-          }}
-        >
-          <label>
-            Электронная почта для чека
-            <input type="email" name="email" required placeholder="name@example.com" autoComplete="email" />
-          </label>
-          <label className="legal__agree">
-            <input type="checkbox" name="offer" required />
-            <span>
-              Согласен с офертой и принимаю оплату 199 ₽ за публикацию одной карты.
-            </span>
-          </label>
-          <button className="legal__btn" type="submit">
-            Оплатить 199 ₽ картой или СБП
-          </button>
-        </form>
-        <p className="legal__pay-ok" hidden>
-          Заявка на оплату 199 ₽ принята. Платёж обрабатывается через ЮKassa банковской картой или
-          СБП. После подтверждения оплаты карта публикуется в Telegram Mini App.
+          <a className="legal__btn legal__btn--ghost" href="https://t.me/foryougift67Bot/memories">
+            Открыть в Telegram
+          </a>
         </p>
       </section>
 
@@ -145,6 +108,7 @@ export function LegalScreen() {
           фото, тексты и координаты точек. Данные хранятся на сервере Исполнителя для предоставления
           услуги. По вопросам обработки данных обращайтесь:{' '}
           <a href="mailto:galievalexeygaliev@yandex.com">galievalexeygaliev@yandex.com</a>.
+          Подробности — в <a href="#legal-privacy">политике конфиденциальности</a>.
         </p>
         <h3>8. Возврат средств</h3>
         <p>
@@ -177,6 +141,60 @@ export function LegalScreen() {
           условий настоящего пользовательского соглашения и публичной оферты.
         </p>
         <p className="legal__muted">Дата публикации: 3 сентября 2026 г.</p>
+      </section>
+
+      <section id="legal-privacy" className="legal__card">
+        <p className="legal__eyebrow">Персональные данные</p>
+        <h2>Политика конфиденциальности</h2>
+        <p className="legal__lead">
+          Настоящая политика описывает, какие данные обрабатывает сервис «Карта воспоминаний» и для
+          чего они нужны. Используя Сервис, вы соглашаетесь с этой политикой.
+        </p>
+        <h3>1. Оператор</h3>
+        <p>
+          Галиев Алексей Юрьевич, самозанятый, ИНН 345947188258,{' '}
+          <a href="mailto:galievalexeygaliev@yandex.com">galievalexeygaliev@yandex.com</a>,{' '}
+          <a href="tel:+79963688158">+7 996 368-81-58</a>.
+        </p>
+        <h3>2. Какие данные обрабатываются</h3>
+        <ul>
+          <li>данные Telegram-профиля: имя, идентификатор, username при наличии;</li>
+          <li>фото, тексты, даты и координаты точек, которые вы загружаете в карту;</li>
+          <li>данные об оплате, которые обрабатывает ЮKassa: сумма, статус платежа, способ оплаты.</li>
+        </ul>
+        <p>Номер карты и реквизиты СБП мы не получаем и не храним — их принимает ЮKassa.</p>
+        <h3>3. Для чего нужны данные</h3>
+        <ul>
+          <li>чтобы создать и показать карту получателю;</li>
+          <li>чтобы принять оплату и подтвердить публикацию;</li>
+          <li>чтобы ответить на обращения в поддержку.</li>
+        </ul>
+        <h3>4. Где хранятся данные</h3>
+        <p>
+          Карта и загруженные материалы хранятся на сервере Исполнителя, пока нужна услуга.
+          Платёжные данные обрабатываются ЮKassa по их правилам.
+        </p>
+        <h3>5. Передача третьим лицам</h3>
+        <p>
+          Данные передаются только если это нужно для услуги: Telegram (вход в Mini App), ЮKassa
+          (оплата), хостинг. Мы не продаём данные.
+        </p>
+        <h3>6. Ваши права</h3>
+        <p>
+          Можно запросить доступ, уточнение или удаление данных. Напишите на{' '}
+          <a href="mailto:galievalexeygaliev@yandex.com">galievalexeygaliev@yandex.com</a>. Удалим
+          карту и связанные материалы по обращению, если это не мешает уже оказанной услуге и
+          требованиям закона.
+        </p>
+        <h3>7. Изменения</h3>
+        <p>
+          Актуальная версия всегда на этой странице:{' '}
+          <a href={`${APP_URL}/?page=legal#legal-privacy`}>
+            {APP_URL}/?page=legal#legal-privacy
+          </a>
+          .
+        </p>
+        <p className="legal__muted">Дата публикации: 5 сентября 2026 г.</p>
       </section>
 
       <section id="legal-requisites" className="legal__card">

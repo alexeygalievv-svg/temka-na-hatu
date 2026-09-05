@@ -27,4 +27,11 @@ export const env = {
   /** Публичный URL backend (для webhook), например https://temka-backend.onrender.com */
   publicWebhookUrl: process.env.PUBLIC_WEBHOOK_URL?.replace(/\/$/, ''),
   telegramWebhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET,
+  /** Публичный URL фронтенда — return_url после оплаты ЮKassa */
+  publicAppUrl: (process.env.PUBLIC_APP_URL ?? 'https://temka-frontend.onrender.com').replace(
+    /\/$/,
+    '',
+  ),
+  yookassaShopId: process.env.YOOKASSA_SHOP_ID ?? '',
+  yookassaSecretKey: process.env.YOOKASSA_SECRET_KEY ?? '',
 };

@@ -4,6 +4,7 @@ import {
   viewport,
   hapticFeedback,
   openTelegramLink,
+  openLink,
   retrieveLaunchParams,
   retrieveRawInitData,
   copyTextToClipboard,
@@ -42,11 +43,6 @@ export function initTelegram(): void {
   } catch {
     /* не в Telegram */
   }
-}
-
-/** Приложение открыто внутри Telegram Mini App, а не в обычном браузере. */
-export function isTelegramMiniApp(): boolean {
-  return Boolean(getRawInitData());
 }
 
 /** Сырая строка initData — уходит на backend в заголовке Authorization. */
@@ -166,4 +162,17 @@ export function shareLink(url: string, text: string): void {
     /* не в Telegram */
   }
   window.open(shareUrl, '_blank');
+}
+
+/** Открыть страницу оплаты ЮKassa. */
+export function openExternalLink(url: string): void {
+  try {
+    if (openLink.isAvailable()) {
+      openLink(url, { tryInstantView: false });
+      return;
+    }
+  } catch {
+    /* не в Telegram */
+  }
+  window.location.assign(url);
 }

@@ -3,6 +3,7 @@ import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import { env } from './env.js';
 import { mapRoutes } from './routes/maps.js';
+import { paymentRoutes } from './routes/payments.js';
 import { telegramRoutes } from './routes/telegram.js';
 import { supabase } from './supabase.js';
 import { setWebhook } from './telegramBot.js';
@@ -23,6 +24,7 @@ app.get('/api/health', async () => {
 });
 
 await app.register(mapRoutes);
+await app.register(paymentRoutes);
 await app.register(telegramRoutes);
 
 app.setErrorHandler((error: FastifyError, _request, reply) => {

@@ -9,7 +9,7 @@ import { PointEditorSheet } from './PointEditorSheet';
 import { PointListSheet } from './PointListSheet';
 import { IntroEditorSheet } from './IntroEditorSheet';
 import { blurOnEnter, hideSoftKeyboard } from '../lib/keyboard';
-import { LEGAL_REQUISITES_PATH, LEGAL_TERMS_PATH } from '../lib/legal';
+import { LegalLinks } from '../components/LegalLinks';
 
 const MOSCOW = { lat: 55.7512, lng: 37.6184 };
 const ONBOARDING_KEY = 'builder-onboarding-seen';
@@ -188,15 +188,7 @@ export function BuilderScreen({
         </Button>
       </footer>
 
-      <p className="builder__legal">
-        <a href={LEGAL_TERMS_PATH}>
-          Условия и оферта
-        </a>
-        <span aria-hidden="true">·</span>
-        <a href={LEGAL_REQUISITES_PATH}>
-          Реквизиты
-        </a>
-      </p>
+      <LegalLinks className="builder__legal" pay />
 
       <IntroEditorSheet
         open={introOpen}
