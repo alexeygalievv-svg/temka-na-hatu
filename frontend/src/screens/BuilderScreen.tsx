@@ -9,7 +9,7 @@ import { PointEditorSheet } from './PointEditorSheet';
 import { PointListSheet } from './PointListSheet';
 import { IntroEditorSheet } from './IntroEditorSheet';
 import { blurOnEnter, hideSoftKeyboard } from '../lib/keyboard';
-import { LegalLinks } from '../components/LegalLinks';
+import { PUBLICATION_PRICE_RUB } from '../lib/pricing';
 
 const MOSCOW = { lat: 55.7512, lng: 37.6184 };
 const ONBOARDING_KEY = 'builder-onboarding-seen';
@@ -184,11 +184,9 @@ export function BuilderScreen({
           Предпросмотр
         </Button>
         <Button onClick={onPublish} disabled={points.length === 0 || publishing !== null}>
-          Ссылка
+          Оплатить {PUBLICATION_PRICE_RUB} рублей
         </Button>
       </footer>
-
-      <LegalLinks className="builder__legal" />
 
       <IntroEditorSheet
         open={introOpen}
