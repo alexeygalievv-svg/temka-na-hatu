@@ -1638,12 +1638,35 @@ body::after {
   inset: 0;
   overflow: auto;
   -webkit-overflow-scrolling: touch;
-  padding: 20px 16px calc(28px + var(--safe-bottom));
+  padding: calc(12px + var(--safe-top)) 16px calc(28px + var(--safe-bottom));
   background:
     radial-gradient(90% 70% at 50% 15%, rgba(201, 151, 63, 0.16), transparent 60%),
     linear-gradient(170deg, var(--paper) 0%, var(--paper-warm) 100%);
   user-select: text;
   -webkit-user-select: text;
+}
+
+.pay-screen__back {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: 0 0 10px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+}
+
+.pay-screen__back:active {
+  transform: scale(0.96);
 }
 
 .pay-screen__card {
@@ -1798,8 +1821,15 @@ body::after {
 
 .pay-method__icon {
   display: flex;
-  width: 36px;
-  height: 36px;
+  width: 48px;
+  height: 48px;
+}
+
+.pay-method__logo {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  border-radius: 10px;
 }
 
 .pay-method__check {
