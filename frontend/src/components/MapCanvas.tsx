@@ -479,64 +479,6 @@ function attachTileDiagnostics(map: any, container: HTMLElement | null): () => v
   };
 }
 
-function setMapGesturing(on: boolean) {
-  document.body.classList.toggle('map-gesturing', on);
-}
-
-/** На телефоне сразу гасим оверлеи и пины — иначе щипок рвётся. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function attachGestureHints(map: any, container: HTMLElement | null): () => void {
-  let endTimer: number | null = null;
-  const onBegin = () => {
-    if (endTimer !== null) {
-      window.clearTimeout(endTimer);
-      endTimer = null;
-    }
-    setMapGesturing(true);
-  };
-  const onEnd = () => {
-    if (endTimer !== null) window.clearTimeout(endTimer);
-    endTimer = window.setTimeout(() => {
-      endTimer = null;
-      setMapGesturing(false);
-    }, 160);
-  };
-  const onTouchStart = (event: TouchEvent) => {
-    if (event.touches.length >= 2) onBegin();
-  };
-  const onTouchMove = (event: TouchEvent) => {
-    if (event.touches.length >= 2) onBegin();
-  };
-  const onTouchEnd = (event: TouchEvent) => {
-    if (event.touches.length < 2) onEnd();
-  };
-
-  map.events.add('actionbegin', onBegin);
-  map.events.add('actionend', onEnd);
-  map.events.add('multitouchstart', onBegin);
-  map.events.add('multitouchend', onEnd);
-  container?.addEventListener('touchstart', onTouchStart, { passive: true });
-  container?.addEventListener('touchmove', onTouchMove, { passive: true });
-  container?.addEventListener('touchend', onTouchEnd, { passive: true });
-  container?.addEventListener('touchcancel', onEnd, { passive: true });
-
-  return () => {
-    try {
-      map.events.remove('actionbegin', onBegin);
-      map.events.remove('actionend', onEnd);
-      map.events.remove('multitouchstart', onBegin);
-      map.events.remove('multitouchend', onEnd);
-    } catch {
-      /* destroy */
-    }
-    if (endTimer !== null) window.clearTimeout(endTimer);
-    container?.removeEventListener('touchstart', onTouchStart);
-    container?.removeEventListener('touchmove', onTouchMove);
-    container?.removeEventListener('touchend', onTouchEnd);
-    container?.removeEventListener('touchcancel', onEnd);
-    setMapGesturing(false);
-  };
-}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function findTileLayer(root: any): any {
@@ -716,7 +658,6 @@ export function MapCanvas({
   const flightGenRef = useRef(0);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [touchMap, setTouchMap] = useState(false);
 
   const mapClickRef = useRef(onMapClick);
   mapClickRef.current = onMapClick;
@@ -729,7 +670,6 @@ export function MapCanvas({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let map: any = null;
     let detachDiag: (() => void) | null = null;
-    let detachGestures: (() => void) | null = null;
 
     loadYmaps()
       .then((ymaps) => {
@@ -738,7 +678,6 @@ export function MapCanvas({
         pinLayoutRef.current = pinLayoutClass(ymaps);
 
         const touchMap = prefersTouchMap();
-        setTouchMap(touchMap);
 
         map = new ymaps.Map(
           containerRef.current,
@@ -824,7 +763,6 @@ export function MapCanvas({
         );
 
         mapRef.current = map;
-        detachGestures = attachGestureHints(map, containerRef.current);
         if (import.meta.env.DEV) {
           detachDiag = attachTileDiagnostics(map, containerRef.current);
         }
@@ -846,7 +784,6 @@ export function MapCanvas({
     return () => {
       cancelled = true;
       window.removeEventListener('resize', handleResize);
-      detachGestures?.();
       detachDiag?.();
       readyWaitersRef.current.forEach((resolve) => resolve());
       readyWaitersRef.current.clear();
@@ -855,7 +792,6 @@ export function MapCanvas({
       if (map) map.destroy();
       if (containerRef.current) containerRef.current.replaceChildren();
       mapRef.current = null;
-      setTouchMap(false);
       setReady(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1237,9 +1173,9 @@ export function MapCanvas({
   );
 
   return (
-    <div className={touchMap ? 'map-canvas map-canvas--touch' : 'map-canvas'}>
+    <div className="map-canvas">
       <div ref={containerRef} className="map-canvas__map" />
-      {!touchMap && <div className="map-canvas__tint" aria-hidden="true" />}
+      <div className="map-canvas__tint" aria-hidden="true" />
       {error && (
         <div className="map-canvas__error">
           <p>Карта не загрузилась</p>

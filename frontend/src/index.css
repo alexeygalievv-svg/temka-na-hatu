@@ -71,25 +71,6 @@ body::after {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.2 0 0 0 0 0.15 0 0 0 0 0.1 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-body.map-gesturing::after {
-  display: none;
-}
-
-body.map-gesturing .map-pin {
-  display: none;
-}
-
-body.map-gesturing .map-canvas__tint,
-body.map-gesturing .builder__header,
-body.map-gesturing .builder__dock,
-body.map-gesturing .viewer__topbar,
-body.map-gesturing .viewer__caption,
-body.map-gesturing .viewer__explore-hint,
-body.map-gesturing .viewer__nudge,
-body.map-gesturing .viewer__skip {
-  display: none;
-}
-
 @media (pointer: coarse) {
   body::after {
     display: none;
@@ -102,10 +83,6 @@ body.map-gesturing .viewer__skip {
   .viewer__explore-hint {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
-  }
-
-  .map-canvas__tint {
-    display: none;
   }
 
   .map-pin__shadow {
