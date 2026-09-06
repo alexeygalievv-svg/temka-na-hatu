@@ -192,8 +192,6 @@ body::after {
 
 @media (pointer: coarse) {
   .map-canvas__tint {
-    z-index: 5;
-    transform: translateZ(0);
     background:
       radial-gradient(120% 90% at 50% 40%, transparent 50%, rgba(120, 84, 50, 0.22) 100%),
       linear-gradient(rgba(242, 221, 184, 0.28), rgba(242, 221, 184, 0.24));

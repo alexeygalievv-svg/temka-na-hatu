@@ -34,6 +34,26 @@ const PIN_W = 40;
 const PIN_H = 42;
 /** 3px на округление проекции: веер только если иконка целиком под другой. */
 const PIN_COVER_TOL = 3;
+const PIN_ICON_CACHE = new Map<string, string>();
+const EMPTY_PIXEL =
+  'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
+function touchPinIconUrl(
+  label: string,
+  active: boolean,
+  angle: number,
+  fanX: number,
+  fanY: number,
+): string {
+  const key = `${label}|${active}|${angle}|${fanX}|${fanY}`;
+  const cached = PIN_ICON_CACHE.get(key);
+  if (cached) return cached;
+  const scale = active ? 1.16 : 1;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="42" viewBox="0 0 40 42"><g transform="translate(${20 + fanX} ${42 + fanY}) rotate(${angle}) scale(${scale}) translate(-20 -42)"><path d="M20 37 C20 37 5 25.5 5 15.5 C5 9.5 9.5 5 15.5 5 C18.5 5 20.5 7 20 9.5 C19.5 7 21.5 5 24.5 5 C30.5 5 35 9.5 35 15.5 C35 25.5 20 37 20 37 Z" fill="#c25932" stroke="#fff7ec" stroke-width="2.2"/><text x="20" y="19.5" text-anchor="middle" dominant-baseline="middle" fill="#fff7ec" font-family="Georgia, serif" font-weight="700" font-size="15">${label}</text></g></svg>`;
+  const url = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  PIN_ICON_CACHE.set(key, url);
+  return url;
+}
 
 type PinItem = { pin: MapPin; px: number; py: number };
 type PinAabb = { left: number; right: number; top: number; bottom: number };
@@ -690,8 +710,8 @@ export function MapCanvas({
           {
             suppressMapOpenBlock: true,
             maxAnimationZoomDifference: 23,
-            // На телефоне дробный зум при щипке — иначе зум «ступеньками».
-            avoidFractionalZoom: false,
+            // На телефоне целые зумы: GPU масштабирует тайлы во время щипка, интерфейс не трогаем.
+            avoidFractionalZoom: touchMap,
             yandexMapDisablePoiInteractivity: true,
           },
         );
@@ -704,7 +724,7 @@ export function MapCanvas({
         }
         if (touchMap) {
           try {
-            map.behaviors.get('multiTouch')?.options.set({ tremor: 8 });
+            map.behaviors.get('multiTouch')?.options.set({ tremor: 1 });
           } catch {
             /* pinch останется со стандартной чувствительностью */
           }
@@ -763,7 +783,7 @@ export function MapCanvas({
         );
 
         mapRef.current = map;
-        if (import.meta.env.DEV) {
+        if (import.meta.env.DEV && !touchMap) {
           detachDiag = attachTileDiagnostics(map, containerRef.current);
         }
         // Родительский Screen входит через transform/scale. После окончания
@@ -816,6 +836,7 @@ export function MapCanvas({
     }
 
     const applyPins = () => {
+      const rasterPins = prefersTouchMap();
       const fans = computePinFans(map, pins);
       const aliases = pinClickAliasRef.current;
       aliases.clear();
@@ -829,24 +850,53 @@ export function MapCanvas({
           fanClass: fan.interactive ? 'map-pin--fan-top' : 'map-pin--fan-under',
           fanStyle: `--fan-angle:${fan.angle}deg;--fan-x:${fan.x.toFixed(1)}px;--fan-y:${fan.y.toFixed(1)}px;`,
         };
-        const signature = `${pin.label}|${props.activeClass}|${props.fanClass}|${pin.lat}|${pin.lng}|${fan.angle}|${fan.x.toFixed(1)}|${fan.y.toFixed(1)}|${fan.clickId}|${fan.interactive}`;
+        const iconHref = rasterPins
+          ? touchPinIconUrl(pin.label, !!pin.active, fan.angle, fan.x, fan.y)
+          : EMPTY_PIXEL;
+        const signature = rasterPins
+          ? `${pin.label}|${props.activeClass}|${pin.lat}|${pin.lng}|${fan.angle}|${fan.x.toFixed(1)}|${fan.y.toFixed(1)}|${fan.clickId}|${fan.interactive}|raster`
+          : `${pin.label}|${props.activeClass}|${props.fanClass}|${pin.lat}|${pin.lng}|${fan.angle}|${fan.x.toFixed(1)}|${fan.y.toFixed(1)}|${fan.clickId}|${fan.interactive}`;
+
+        const wasRaster = drawn.get(pin.id)?.endsWith('|raster') ?? false;
+        if (placemark && wasRaster !== rasterPins) {
+          map.geoObjects.remove(placemark);
+          existing.delete(pin.id);
+          drawn.delete(pin.id);
+          placemark = undefined;
+        }
 
         if (!placemark) {
-          placemark = new ymaps.Placemark([pin.lat, pin.lng], props, {
-            iconLayout: 'default#imageWithContent',
-            iconImageHref:
-              'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
-            iconImageSize: [PIN_W, PIN_H],
-            iconImageOffset: [-PIN_W / 2, -PIN_H],
-            iconContentOffset: [0, 0],
-            iconContentLayout: layout,
-            hasBalloon: false,
-            hasHint: false,
-            cursor: fan.interactive ? 'pointer' : 'default',
-            zIndex: fan.z,
-            zIndexHover: fan.z,
-            interactivityModel: fan.interactive ? 'default#opaque' : 'default#silent',
-          });
+          placemark = rasterPins
+            ? new ymaps.Placemark(
+                [pin.lat, pin.lng],
+                {},
+                {
+                  iconLayout: 'default#image',
+                  iconImageHref: iconHref,
+                  iconImageSize: [PIN_W, PIN_H],
+                  iconImageOffset: [-PIN_W / 2, -PIN_H],
+                  hasBalloon: false,
+                  hasHint: false,
+                  cursor: fan.interactive ? 'pointer' : 'default',
+                  zIndex: fan.z,
+                  zIndexHover: fan.z,
+                  interactivityModel: fan.interactive ? 'default#opaque' : 'default#silent',
+                },
+              )
+            : new ymaps.Placemark([pin.lat, pin.lng], props, {
+                iconLayout: 'default#imageWithContent',
+                iconImageHref: EMPTY_PIXEL,
+                iconImageSize: [PIN_W, PIN_H],
+                iconImageOffset: [-PIN_W / 2, -PIN_H],
+                iconContentOffset: [0, 0],
+                iconContentLayout: layout,
+                hasBalloon: false,
+                hasHint: false,
+                cursor: fan.interactive ? 'pointer' : 'default',
+                zIndex: fan.z,
+                zIndexHover: fan.z,
+                interactivityModel: fan.interactive ? 'default#opaque' : 'default#silent',
+              });
           const ownId = pin.id;
           placemark.events.add('click', (event: { stopPropagation: () => void }) => {
             event.stopPropagation();
@@ -858,14 +908,25 @@ export function MapCanvas({
           existing.set(pin.id, placemark);
         } else if (drawn.get(pin.id) !== signature) {
           placemark.geometry.setCoordinates([pin.lat, pin.lng]);
-          placemark.properties.set(props);
-          placemark.options.set({
-            iconImageOffset: [-PIN_W / 2, -PIN_H],
-            zIndex: fan.z,
-            zIndexHover: fan.z,
-            cursor: fan.interactive ? 'pointer' : 'default',
-            interactivityModel: fan.interactive ? 'default#opaque' : 'default#silent',
-          });
+          if (rasterPins) {
+            placemark.options.set({
+              iconImageHref: iconHref,
+              iconImageOffset: [-PIN_W / 2, -PIN_H],
+              zIndex: fan.z,
+              zIndexHover: fan.z,
+              cursor: fan.interactive ? 'pointer' : 'default',
+              interactivityModel: fan.interactive ? 'default#opaque' : 'default#silent',
+            });
+          } else {
+            placemark.properties.set(props);
+            placemark.options.set({
+              iconImageOffset: [-PIN_W / 2, -PIN_H],
+              zIndex: fan.z,
+              zIndexHover: fan.z,
+              cursor: fan.interactive ? 'pointer' : 'default',
+              interactivityModel: fan.interactive ? 'default#opaque' : 'default#silent',
+            });
+          }
         }
 
         drawn.set(pin.id, signature);
