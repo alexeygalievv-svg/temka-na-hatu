@@ -1,4 +1,4 @@
-import { LEGAL_PAY_PATH, LEGAL_PRIVACY_PATH, LEGAL_TERMS_PATH } from '../lib/legal';
+import { LEGAL_PRIVACY_PATH, LEGAL_TERMS_PATH } from '../lib/legal';
 import { PUBLICATION_PRICE_RUB } from '../lib/pricing';
 
 export function LegalScreen() {
@@ -7,7 +7,6 @@ export function LegalScreen() {
       <nav className="legal__nav" aria-label="Разделы">
         <a href="#legal-terms">Условия использования</a>
         <a href="#legal-privacy">Конфиденциальность</a>
-        <a href={LEGAL_PAY_PATH}>Оплата</a>
       </nav>
 
       <section id="legal-terms" className="legal__card">
@@ -30,8 +29,8 @@ export function LegalScreen() {
         </ol>
         <h3>3. Оплата</h3>
         <p>
-          Оплата принимается через ЮKassa: СБП или карты РФ. Номер карты и реквизиты СБП сервис не
-          получает и не хранит.
+          Оплата принимается через СБП или карты банков РФ. Реквизиты карты и данные для перевода по
+          СБП сервис не получает и не хранит.
         </p>
         <h3>4. Возврат</h3>
         <p>
@@ -61,7 +60,7 @@ export function LegalScreen() {
         <ul>
           <li>данные Telegram-профиля: имя и идентификатор, если вы открыли Mini App;</li>
           <li>фото, тексты, даты и координаты мест, которые вы сами добавляете на карту;</li>
-          <li>статус оплаты, который передаёт ЮKassa: сумма, способ и факт оплаты.</li>
+          <li>факт и сумма оплаты публикации.</li>
         </ul>
         <p>Номер карты и реквизиты СБП мы не получаем и не храним.</p>
         <h3>2. Для чего нужны данные</h3>
@@ -73,7 +72,7 @@ export function LegalScreen() {
         <h3>3. Хранение и передача</h3>
         <p>
           Карта хранится, пока нужна услуга. Данные передаются только если это нужно для работы
-          сервиса: Telegram, ЮKassa и хостинг. Мы не продаём данные.
+          сервиса: Telegram и хостинг. Мы не продаём данные.
         </p>
         <h3>4. Ваши права</h3>
         <p>

@@ -4,7 +4,6 @@ import {
   viewport,
   hapticFeedback,
   openTelegramLink,
-  openLink,
   retrieveLaunchParams,
   retrieveRawInitData,
   copyTextToClipboard,
@@ -164,15 +163,3 @@ export function shareLink(url: string, text: string): void {
   window.open(shareUrl, '_blank');
 }
 
-/** Открыть страницу оплаты ЮKassa. */
-export function openExternalLink(url: string): void {
-  try {
-    if (openLink.isAvailable()) {
-      openLink(url, { tryInstantView: false });
-      return;
-    }
-  } catch {
-    /* не в Telegram */
-  }
-  window.location.assign(url);
-}

@@ -10,7 +10,7 @@ import { BuilderScreen } from './screens/BuilderScreen';
 import { PreviewScreen } from './screens/PreviewScreen';
 import { ViewerScreen } from './screens/ViewerScreen';
 import { LinkScreen } from './screens/LinkScreen';
-import { isLegalPath, isPayPath } from './lib/legal';
+import { isLegalPath } from './lib/legal';
 import { LegalScreen } from './screens/LegalScreen';
 import { PayScreen } from './screens/PayScreen';
 
@@ -41,11 +41,9 @@ export default function App() {
     return param?.startsWith('map_') ? param.slice(4) : null;
   }, []);
 
-  const [route, setRoute] = useState<Route>(() => {
-    if (viewMapId) return { name: 'viewer', mapId: viewMapId };
-    if (isPayPath()) return { name: 'pay' };
-    return { name: 'builder' };
-  });
+  const [route, setRoute] = useState<Route>(() =>
+    viewMapId ? { name: 'viewer', mapId: viewMapId } : { name: 'builder' },
+  );
   const [mapTitle, setMapTitle] = useState('Наши места');
   const [authorName, setAuthorName] = useState(() => getUserName() ?? '');
   const [intro, setIntro] = useState<IntroSettings>(DEFAULT_INTRO);
@@ -250,16 +248,9 @@ export default function App() {
           <Screen key="pay">
             <PayScreen
               mapTitle={mapTitle}
-              prepareMap={
-                isPayPath()
-                  ? undefined
-                  : async () => {
-                      const created = await publish();
-                      return { mapId: created.id, link: created.link };
-                    }
-              }
-              onPaid={(link) => {
-                if (link) setRoute({ name: 'link', link });
+              onPay={async () => {
+                const created = await publish();
+                setRoute({ name: 'link', link: created.link });
               }}
               onBack={() => setRoute({ name: 'builder' })}
             />

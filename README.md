@@ -56,9 +56,7 @@ npm run dev            # http://localhost:5173
 
 | Метод | Путь | Описание |
 |---|---|---|
-| POST | `/api/maps` | Создать карту (нужен initData), статус `draft` |
+| POST | `/api/maps` | Создать карту (нужен initData) |
 | POST | `/api/maps/:id/points` | Добавить точку (только владелец) |
 | POST | `/api/maps/:id/photos` | Загрузить фото (multipart, только владелец) |
-| GET | `/api/maps/:id` | Получить карту с точками (публично, только после оплаты) |
-| GET | `/api/offer` | Цена и способы оплаты |
-| POST | `/api/payments` | Создать платёж ЮKassa (СБП или карта РФ) |
+| GET | `/api/maps/:id` | Получить карту с точками (публично) |
