@@ -31,6 +31,12 @@ services:
         sync: false
       - key: TELEGRAM_WEBHOOK_SECRET
         sync: false
+      - key: PUBLIC_APP_URL
+        value: https://temka-frontend.onrender.com
+      - key: YOOKASSA_SHOP_ID
+        sync: false
+      - key: YOOKASSA_SECRET_KEY
+        sync: false
 
 staticSites:
   - name: temka-frontend
@@ -38,6 +44,10 @@ staticSites:
     buildCommand: npm install && npm run build
     staticPublishPath: dist
     autoDeploy: true
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
     envVars:
       - key: NODE_VERSION
         value: "22"

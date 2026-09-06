@@ -94,3 +94,53 @@ export function uploadPhoto(mapId: string, file: File) {
 export function fetchMap(mapId: string) {
   return request<MemoryMapData>(`/api/maps/${mapId}`);
 }
+
+export type PaymentMethod = 'sbp' | 'bank_card';
+
+export function fetchOffer() {
+  return request<{
+    title: string;
+    description: string;
+    priceRub: number;
+    currency: string;
+    methods: PaymentMethod[];
+  }>('/api/offer');
+}
+
+export function fetchCheckout(mapId: string) {
+  return request<{
+    mapId: string;
+    title: string;
+    status: string;
+    paid: boolean;
+    link: string;
+    priceRub: number;
+  }>(`/api/maps/${mapId}/checkout`, {
+    headers: authHeaders(),
+  });
+}
+
+export function fetchPayment(id: string) {
+  return request<{
+    id: string;
+    status: string;
+    paid: boolean;
+    mapId: string | null;
+    link: string;
+  }>(`/api/payments/${id}`);
+}
+
+export function createPayment(payload: { method: PaymentMethod; mapId?: string }) {
+  return request<{
+    id: string;
+    paid: boolean;
+    status: string;
+    confirmationUrl: string | null;
+    link: string;
+    priceRub: number;
+  }>('/api/payments', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(payload),
+  });
+}
