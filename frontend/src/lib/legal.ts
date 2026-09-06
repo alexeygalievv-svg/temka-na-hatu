@@ -1,6 +1,7 @@
 /** Ссылки на документы внутри приложения. */
 export const LEGAL_TERMS_PATH = '/?page=legal#legal-terms';
 export const LEGAL_PRIVACY_PATH = '/?page=legal#legal-privacy';
+export const LEGAL_CONTACTS_PATH = '/?page=legal#legal-contacts';
 
 export function isLegalPath(): boolean {
   const path = window.location.pathname.replace(/\/+$/, '').toLowerCase();
@@ -10,6 +11,7 @@ export function isLegalPath(): boolean {
     path.endsWith('/legal') ||
     hash.includes('terms') ||
     hash.includes('privacy') ||
+    hash.includes('contacts') ||
     query.includes('page=legal')
   );
 }

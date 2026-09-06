@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '../components/Button';
+import { SupportContacts } from '../components/SupportContacts';
 import { copyText, haptic, shareLink } from '../telegram';
 
 interface LinkScreenProps {
@@ -102,6 +103,8 @@ export function LinkScreen({ link, title, onBack, onReset }: LinkScreenProps) {
             Сбросить всё
           </Button>
         </div>
+
+        <SupportContacts />
       </motion.div>
     </div>
   );

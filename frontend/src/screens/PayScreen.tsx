@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '../components/Button';
 import { LegalLinks } from '../components/LegalLinks';
-import { PUBLICATION_PRICE_RUB } from '../lib/pricing';
+import { SupportContacts } from '../components/SupportContacts';
+import { PUBLICATION_PRICE_RUB, PUBLICATION_DESCRIPTION } from '../lib/pricing';
 import { LEGAL_PRIVACY_PATH, LEGAL_TERMS_PATH } from '../lib/legal';
 import { CardIcon, CheckIcon, SbpIcon } from '../components/PayIcons';
 import { haptic } from '../telegram';
@@ -44,15 +45,20 @@ export function PayScreen({ mapTitle, onBack, onPay }: PayScreenProps) {
         transition={{ type: 'spring', stiffness: 240, damping: 26 }}
       >
         <p className="pay-screen__eyebrow">Отправка карты</p>
-        <h1 className="pay-screen__title">Почти готово</h1>
+        <h1 className="pay-screen__title">Публикация карты</h1>
         {mapTitle ? (
           <p className="pay-screen__map">«{mapTitle.trim() || 'Карта воспоминаний'}»</p>
         ) : null}
-        <p className="pay-screen__lead">
-          Чтобы отправить карту близкому человеку, нужно оплатить {PUBLICATION_PRICE_RUB} ₽. После
-          оплаты вы получите ссылку.
-        </p>
+        <p className="pay-screen__lead">{PUBLICATION_DESCRIPTION}</p>
+
+        <ul className="pay-screen__includes">
+          <li>Интерактивная карта мест с фото и описаниями</li>
+          <li>Уникальная ссылка для близкого человека</li>
+          <li>Разовая оплата, без подписки</li>
+        </ul>
+
         <p className="pay-screen__price">{PUBLICATION_PRICE_RUB} ₽</p>
+        <p className="pay-screen__price-note">Цена окончательная, включая все налоги. Доплат нет.</p>
 
         <p className="pay-screen__methods-label">Способ оплаты</p>
         <div className="pay-screen__methods" role="radiogroup" aria-label="Способ оплаты">
@@ -102,7 +108,7 @@ export function PayScreen({ mapTitle, onBack, onPay }: PayScreenProps) {
           />
           <span>
             Оплачивая, я принимаю{' '}
-            <a href={LEGAL_TERMS_PATH}>условия использования</a>
+            <a href={LEGAL_TERMS_PATH}>пользовательское соглашение</a>
             {' и '}
             <a href={LEGAL_PRIVACY_PATH}>политику конфиденциальности</a>
           </span>
@@ -112,7 +118,7 @@ export function PayScreen({ mapTitle, onBack, onPay }: PayScreenProps) {
 
         <div className="pay-screen__actions">
           <Button wide disabled={!accepted || busy} onClick={() => void pay()}>
-            {busy ? 'Публикуем…' : 'Оплатить'}
+            {busy ? 'Публикуем…' : `Оплатить ${PUBLICATION_PRICE_RUB} ₽`}
           </Button>
           {onBack ? (
             <Button variant="ghost" wide onClick={onBack}>
@@ -121,6 +127,7 @@ export function PayScreen({ mapTitle, onBack, onPay }: PayScreenProps) {
           ) : null}
         </div>
 
+        <SupportContacts />
         <LegalLinks className="link-screen__legal" />
       </motion.div>
     </div>

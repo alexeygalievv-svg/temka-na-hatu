@@ -7,7 +7,7 @@ interface LegalLinksProps {
 export function LegalLinks({ className }: LegalLinksProps) {
   return (
     <p className={className}>
-      <a href={LEGAL_TERMS_PATH}>Условия использования</a>
+      <a href={LEGAL_TERMS_PATH}>Пользовательское соглашение</a>
       <span aria-hidden="true"> · </span>
       <a href={LEGAL_PRIVACY_PATH}>Политика конфиденциальности</a>
     </p>
