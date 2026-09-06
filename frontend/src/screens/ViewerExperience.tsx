@@ -7,6 +7,7 @@ import { MemoryCard } from '../components/MemoryCard';
 import { Button } from '../components/Button';
 import { IntroOverlay } from '../components/IntroOverlay';
 import { PlaceDate } from '../components/PlaceDate';
+import { TOUR_STAGE_HOLD_MS } from '../lib/tourTiming';
 
 type Stage = 'intro' | 'tour' | 'explore';
 type HintPhase = 'idle' | 'center' | 'dock';
@@ -24,8 +25,6 @@ interface ViewerExperienceProps {
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const WIDE_ZOOM = 10;
 const CLOSE_ZOOM = 15;
-const HOLD_WIDE_MS = 1000;
-const HOLD_AFTER_ARRIVE_MS = 1400;
 
 /**
  * Экран получателя: интро → по очереди подлёт к месту и карточка → свободная карта.
@@ -90,18 +89,16 @@ export function ViewerExperience({
     setVisibleCount((count) => Math.max(count, index + 1));
     setStage('tour');
 
-    await sleep(index === 0 ? 80 : 280);
+    await sleep(TOUR_STAGE_HOLD_MS);
     await mapRef.current?.waitUntilReady();
     if (gen !== tourGenRef.current) return;
     if (index === 0) {
-      await sleep(HOLD_WIDE_MS);
+      await sleep(TOUR_STAGE_HOLD_MS);
       if (gen !== tourGenRef.current) return;
     }
     await mapRef.current?.preloadRoute(point.lat, point.lng, CLOSE_ZOOM);
     if (gen !== tourGenRef.current) return;
     await mapRef.current?.flyTo(point.lat, point.lng, CLOSE_ZOOM, 1700);
-    if (gen !== tourGenRef.current) return;
-    await sleep(HOLD_AFTER_ARRIVE_MS);
     if (gen !== tourGenRef.current) return;
     setCardOpen(true);
     haptic('medium');

@@ -1,5 +1,6 @@
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import { loadYmaps } from '../lib/ymaps';
+import { TOUR_STAGE_HOLD_MS } from '../lib/tourTiming';
 
 export interface MapPin {
   id: string;
@@ -31,8 +32,8 @@ interface MapCanvasProps {
 /** Размеры пина — должны совпадать с CSS и iconImageOffset. */
 const PIN_W = 40;
 const PIN_H = 42;
-/** 1px на округление проекции: веер только если иконка целиком под другой. */
-const PIN_COVER_TOL = 1;
+/** 3px на округление проекции: веер только если иконка целиком под другой. */
+const PIN_COVER_TOL = 3;
 
 type PinItem = { pin: MapPin; px: number; py: number };
 type PinAabb = { left: number; right: number; top: number; bottom: number };
@@ -222,9 +223,16 @@ const TILE_SIZE = 256;
 const PRELOAD_TIMEOUT_MS = 4000;
 const PRELOAD_MAX_TILES = 96;
 const FIRST_TILES_TIMEOUT_MS = 5000;
-const OVERVIEW_HOLD_MS = 1600;
 
 const sleep = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+
+/** Пауза между этапами перелёта: всегда одна и та же, тайлы грузятся параллельно. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function holdFlightStage(map: any, stillFlying: () => boolean): Promise<boolean> {
+  void waitForVisibleTiles(map, TOUR_STAGE_HOLD_MS);
+  await sleep(TOUR_STAGE_HOLD_MS);
+  return stillFlying();
+}
 
 type TileLogEntry = {
   t: number;
@@ -324,7 +332,7 @@ function isNearbyFlight(map: any, from: [number, number], to: [number, number], 
   return pixelDistance(map, from, to, zoom) < 2 * Math.max(size[0], size[1]);
 }
 
-/** Обзор, в который помещаются обе точки — отсюда камера потом приближает. */
+/** Широкий зум, на котором камера едет к следующей точке. */
 function overviewForFlight(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ymaps: any,
@@ -1140,43 +1148,54 @@ export function MapCanvas({
               );
             }
             if (!stillFlying()) return;
-            await waitForVisibleTiles(map, FIRST_TILES_TIMEOUT_MS);
+            if (!(await holdFlightStage(map, stillFlying))) return;
             return;
           }
 
-          // Далеко: отъезд на обзор → ждём тайлы → подлёт к точке.
-          // Штатный panTo.flying на очень длинных дистанциях срывается.
+          // Далеко: расширение → пауза → перелёт → пауза → приближение → пауза.
           const overview = ymaps
             ? overviewForFlight(ymaps, map, from, dest, fromZoom, targetZoom)
             : { center: dest, zoom: Math.max(3, targetZoom - 6) };
-          const outMs = Math.max(900, Math.round(animDuration * 0.6));
-          const inMs = Math.max(1000, Math.round(animDuration * 0.75));
+          const wideZoom = overview.zoom;
+          const stageMs = Math.max(900, Math.round(animDuration * 0.5));
 
-          logTile('FLY_OUT', { overview, outMs });
+          if (fromZoom > wideZoom + 0.2) {
+            logTile('FLY_OUT', { center: from, zoom: wideZoom, outMs: stageMs });
+            await waitForAnimation(
+              map.setCenter(from, wideZoom, {
+                duration: stageMs,
+                timingFunction: 'ease-in-out',
+              }),
+              stageMs,
+            );
+            if (!(await holdFlightStage(map, stillFlying))) return;
+            logTile('FLY_OUT_READY', { zoom: map.getZoom?.(), center: map.getCenter?.() });
+          } else {
+            if (!(await holdFlightStage(map, stillFlying))) return;
+          }
+
+          logTile('FLY_PAN', { dest, zoom: wideZoom, panMs: stageMs });
           await waitForAnimation(
-            map.setCenter(overview.center, overview.zoom, {
-              duration: outMs,
+            map.panTo(dest, {
+              duration: stageMs,
               timingFunction: 'ease-in-out',
+              flying: false,
+              safe: false,
             }),
-            outMs,
+            stageMs,
           );
-          if (!stillFlying()) return;
-          await waitForVisibleTiles(map, 8000);
-          if (!stillFlying()) return;
-          logTile('FLY_OUT_READY', { zoom: map.getZoom?.(), center: map.getCenter?.() });
-          await sleep(OVERVIEW_HOLD_MS);
-          if (!stillFlying()) return;
+          if (!(await holdFlightStage(map, stillFlying))) return;
 
-          logTile('FLY_IN', { dest, zoom: targetZoom, inMs });
+          logTile('FLY_IN', { dest, zoom: targetZoom, inMs: stageMs });
           await waitForAnimation(
             map.setCenter(dest, targetZoom, {
-              duration: inMs,
+              duration: stageMs,
               timingFunction: 'ease-in-out',
             }),
-            inMs,
+            stageMs,
           );
-          if (!stillFlying()) return;
-          await waitForVisibleTiles(map, FIRST_TILES_TIMEOUT_MS);
+          if (!(await holdFlightStage(map, stillFlying))) return;
+          void waitForVisibleTiles(map, TOUR_STAGE_HOLD_MS);
         } finally {
           logTile('FLY_END', {
             elapsedMs: Math.round(performance.now() - startedAt),
