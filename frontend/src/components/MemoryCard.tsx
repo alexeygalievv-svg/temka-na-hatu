@@ -13,6 +13,8 @@ interface MemoryCardProps {
   onClose: () => void;
   /** Если false — карточку нельзя смахнуть или закрыть тапом по фону. */
   dismissible?: boolean;
+  backLabel?: string;
+  onBack?: () => void;
   nextLabel?: string;
   onNext?: () => void;
 }
@@ -45,6 +47,8 @@ export function MemoryCard({
   total,
   onClose,
   dismissible = true,
+  backLabel,
+  onBack,
   nextLabel,
   onNext,
 }: MemoryCardProps) {
@@ -172,13 +176,20 @@ export function MemoryCard({
                 </motion.div>
               )}
             </div>
-            {onNext && nextLabel && (
+            {(onNext && nextLabel) || (onBack && backLabel) ? (
               <div className="memory-card__actions">
-                <Button wide onClick={onNext}>
-                  {nextLabel}
-                </Button>
+                {onBack && backLabel ? (
+                  <Button variant="ghost" wide onClick={onBack}>
+                    {backLabel}
+                  </Button>
+                ) : null}
+                {onNext && nextLabel ? (
+                  <Button wide onClick={onNext}>
+                    {nextLabel}
+                  </Button>
+                ) : null}
               </div>
-            )}
+            ) : null}
           </motion.article>
         </>
       )}

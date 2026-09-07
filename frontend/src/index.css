@@ -1116,7 +1116,7 @@ body::after {
 
 .viewer__caption {
   position: absolute;
-  bottom: calc(36px + var(--safe-bottom));
+  bottom: calc(96px + var(--safe-bottom));
   left: 50%;
   translate: -50% 0;
   z-index: 20;
@@ -1129,6 +1129,7 @@ body::after {
   box-shadow: var(--shadow-deep);
   max-width: calc(100% - 24px);
   width: max-content;
+  cursor: pointer;
 }
 
 .viewer__caption-num {
@@ -1407,7 +1408,19 @@ body::after {
 
 .memory-card__actions {
   flex-shrink: 0;
+  display: flex;
+  gap: 10px;
   padding: 16px 22px 0;
+}
+
+.viewer__tour-dock {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: calc(16px + var(--safe-bottom));
+  z-index: 25;
+  display: flex;
+  gap: 10px;
 }
 
 /* ============ Экран ссылки ============ */

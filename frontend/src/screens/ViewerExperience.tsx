@@ -120,6 +120,20 @@ export function ViewerExperience({
     void showStop(tourIndex + 1);
   }
 
+  function goBack() {
+    if (tourIndex > 0) {
+      void showStop(tourIndex - 1);
+      return;
+    }
+    tourGenRef.current += 1;
+    mapRef.current?.cancelFlight();
+    setCardOpen(false);
+    setActiveId(null);
+    setVisibleCount(0);
+    setStage('intro');
+    haptic('soft');
+  }
+
   const shownPoints = stage === 'intro' ? [] : points.slice(0, visibleCount);
   const tourPoint = points[tourIndex] ?? null;
   const activePoint =
@@ -151,6 +165,13 @@ export function ViewerExperience({
         initialZoom={WIDE_ZOOM}
         pins={pins}
         onPinClick={(id) => {
+          if (stage === 'tour') {
+            if (id === tourPoint?.id) {
+              haptic('light');
+              setCardOpen(true);
+            }
+            return;
+          }
           if (stage !== 'explore') return;
           haptic('light');
           setHintPhase('dock');
@@ -199,6 +220,15 @@ export function ViewerExperience({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -14, scale: 0.97 }}
             transition={{ type: 'spring', stiffness: 300, damping: 28 }}
+            onClick={() => {
+              haptic('light');
+              setCardOpen(true);
+            }}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') setCardOpen(true);
+            }}
           >
             <span className="viewer__caption-num">{tourIndex + 1}</span>
             <span className="viewer__caption-copy">
@@ -210,6 +240,17 @@ export function ViewerExperience({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {stage === 'tour' && !cardOpen && (
+        <div className="viewer__tour-dock">
+          <Button variant="ghost" wide onClick={goBack}>
+            Назад
+          </Button>
+          <Button wide onClick={goNext}>
+            {lastStop ? 'Смотреть карту' : 'Далее'}
+          </Button>
+        </div>
+      )}
 
       <AnimatePresence>
         {stage === 'explore' && (
@@ -275,10 +316,15 @@ export function ViewerExperience({
         point={activePoint}
         index={activeIndex}
         total={points.length}
-        dismissible={stage === 'explore'}
+        dismissible
+        backLabel={stage === 'tour' ? 'Назад' : undefined}
+        onBack={stage === 'tour' ? goBack : undefined}
         nextLabel={stage === 'tour' ? (lastStop ? 'Смотреть карту' : 'Далее') : undefined}
         onNext={stage === 'tour' ? goNext : undefined}
-        onClose={() => setActiveId(null)}
+        onClose={() => {
+          if (stage === 'tour') setCardOpen(false);
+          else setActiveId(null);
+        }}
       />
     </div>
   );
