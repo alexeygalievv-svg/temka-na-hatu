@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { AnimatePresence, motion, useDragControls } from 'framer-motion';
 import type { MemoryPoint } from '../types';
 import { hasPhotoUrl } from '../lib/media';
@@ -19,27 +19,6 @@ interface MemoryCardProps {
   onNext?: () => void;
 }
 
-const COMPACT_RATIO = 0.78;
-const EXPANDED_RATIO = 0.94;
-
-/** Поднимает карточку выше, если описание не помещается в компактную высоту. */
-function fitMemoryCardHeight(card: HTMLElement | null) {
-  if (!card) return;
-  card.style.maxHeight = '';
-
-  const viewport = window.visualViewport?.height ?? window.innerHeight;
-  const compactCap = Math.round(viewport * COMPACT_RATIO);
-  const expandedCap = Math.round(viewport * EXPANDED_RATIO);
-
-  card.style.maxHeight = 'none';
-  const naturalHeight = card.offsetHeight;
-  card.style.maxHeight = '';
-
-  if (naturalHeight > compactCap + 6) {
-    card.style.maxHeight = `${Math.min(naturalHeight, expandedCap)}px`;
-  }
-}
-
 /** Карточка воспоминания: пружинный подъём, фото-«полароид», свайп вниз для закрытия. */
 export function MemoryCard({
   point,
@@ -54,40 +33,10 @@ export function MemoryCard({
 }: MemoryCardProps) {
   const dragControls = useDragControls();
   const cardRef = useRef<HTMLElement>(null);
-  const bodyRef = useRef<HTMLDivElement>(null);
   const showPhoto = hasPhotoUrl(point?.photoUrl);
   const ready = useSheetReady(point?.id ?? false);
   const canDismiss = dismissible && ready;
-
-  useLayoutEffect(() => {
-    if (!point || !ready) return;
-
-    const card = cardRef.current;
-    const fit = () => fitMemoryCardHeight(card);
-
-    fit();
-    const frame = window.requestAnimationFrame(fit);
-
-    const body = bodyRef.current;
-    const observer = body ? new ResizeObserver(fit) : null;
-    if (body) observer?.observe(body);
-
-    const imgs = body?.querySelectorAll('img') ?? [];
-    imgs.forEach((img) => {
-      if (!img.complete) img.addEventListener('load', fit, { once: true });
-    });
-
-    window.visualViewport?.addEventListener('resize', fit);
-    window.addEventListener('resize', fit);
-
-    return () => {
-      window.cancelAnimationFrame(frame);
-      observer?.disconnect();
-      window.visualViewport?.removeEventListener('resize', fit);
-      window.removeEventListener('resize', fit);
-      if (card) card.style.maxHeight = '';
-    };
-  }, [point, ready]);
+  const hasActions = Boolean((onNext && nextLabel) || (onBack && backLabel));
 
   return (
     <AnimatePresence>
@@ -133,7 +82,7 @@ export function MemoryCard({
               </span>
             </div>
 
-            <div ref={bodyRef} className="memory-card__body">
+            <div className="memory-card__body">
               {showPhoto && (
                 <motion.figure
                   className="memory-card__photo"
@@ -175,21 +124,22 @@ export function MemoryCard({
                   <PlaceDate value={point.happenedOn} />
                 </motion.div>
               )}
+
+              {hasActions ? (
+                <div className="memory-card__actions">
+                  {onBack && backLabel ? (
+                    <Button variant="ghost" wide onClick={onBack}>
+                      {backLabel}
+                    </Button>
+                  ) : null}
+                  {onNext && nextLabel ? (
+                    <Button wide onClick={onNext}>
+                      {nextLabel}
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
-            {(onNext && nextLabel) || (onBack && backLabel) ? (
-              <div className="memory-card__actions">
-                {onBack && backLabel ? (
-                  <Button variant="ghost" wide onClick={onBack}>
-                    {backLabel}
-                  </Button>
-                ) : null}
-                {onNext && nextLabel ? (
-                  <Button wide onClick={onNext}>
-                    {nextLabel}
-                  </Button>
-                ) : null}
-              </div>
-            ) : null}
           </motion.article>
         </>
       )}

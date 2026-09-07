@@ -1331,9 +1331,8 @@ body::after {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-deep);
   padding: 8px 0 calc(18px + var(--safe-bottom));
-  max-height: 78%;
+  max-height: calc(100% - 24px);
   overflow: hidden;
-  transition: max-height 0.34s var(--ease-out);
 }
 
 .memory-card__handle {
@@ -1343,13 +1342,13 @@ body::after {
 }
 
 .memory-card__body {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   touch-action: pan-y;
-  padding: 0 22px;
+  padding: 0 22px 4px;
 }
 
 .memory-card__counter {
@@ -1374,7 +1373,7 @@ body::after {
 
 .memory-card__photo img {
   width: 100%;
-  max-height: 55vh;
+  max-height: 42vh;
   height: auto;
   object-fit: contain;
   display: block;
@@ -1407,10 +1406,10 @@ body::after {
 }
 
 .memory-card__actions {
-  flex-shrink: 0;
   display: flex;
   gap: 10px;
-  padding: 16px 22px 0;
+  padding: 18px 0 8px;
+  margin-top: 8px;
 }
 
 .viewer__tour-dock {
