@@ -1397,8 +1397,6 @@ body::after {
 
 .memory-card__meta {
   margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px solid rgba(58, 40, 25, 0.08);
 }
 
 .memory-card__meta .place-date {
