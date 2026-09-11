@@ -4,11 +4,14 @@ import { supabase } from '../supabase.js';
 import {
   builderOpenLink,
   escapeHtml,
+  legalPageUrl,
   mapBotStartLink,
   mapOpenLink,
   mapShareLink,
   sendMessage,
 } from '../telegramBot.js';
+
+const SUPPORT_EMAIL = 'stinger.galiev@gmail.com';
 
 interface TelegramUser {
   id: number;
@@ -25,6 +28,18 @@ interface TelegramMessage {
 interface TelegramUpdate {
   update_id: number;
   message?: TelegramMessage;
+}
+
+function docsKeyboard() {
+  return {
+    inline_keyboard: [
+      [{ text: 'Создать карту', url: builderOpenLink() }],
+      [{ text: 'Пользовательское соглашение', url: legalPageUrl('#legal-terms') }],
+      [{ text: 'Политика конфиденциальности', url: legalPageUrl('#legal-privacy') }],
+      [{ text: 'Цены и тарифы', url: legalPageUrl('#legal-prices') }],
+      [{ text: 'Поддержка', url: legalPageUrl('#legal-contacts') }],
+    ],
+  };
 }
 
 async function handleStart(chatId: number, payload: string | undefined): Promise<void> {
@@ -61,13 +76,52 @@ async function handleStart(chatId: number, payload: string | undefined): Promise
 
   await sendMessage(
     chatId,
-    'Соберите карту ваших мест с фото и историями — и отправьте её близкому человеку.',
-    {
-      reply_markup: {
-        inline_keyboard: [[{ text: 'Создать карту', url: builderOpenLink() }]],
-      },
-    },
+    'Соберите карту ваших мест с фото и историями — и отправьте её близкому человеку.\n\nПубликация одной карты — 149 ₽.\nПоддержка: ' +
+      SUPPORT_EMAIL,
+    { reply_markup: docsKeyboard() },
   );
+}
+
+async function handleDocsCommand(chatId: number, command: string): Promise<void> {
+  if (command === '/terms') {
+    await sendMessage(chatId, 'Пользовательское соглашение сервиса «Карта воспоминаний»:', {
+      reply_markup: {
+        inline_keyboard: [[{ text: 'Открыть соглашение', url: legalPageUrl('#legal-terms') }]],
+      },
+    });
+    return;
+  }
+  if (command === '/privacy') {
+    await sendMessage(chatId, 'Политика конфиденциальности сервиса «Карта воспоминаний»:', {
+      reply_markup: {
+        inline_keyboard: [[{ text: 'Открыть политику', url: legalPageUrl('#legal-privacy') }]],
+      },
+    });
+    return;
+  }
+  if (command === '/prices') {
+    await sendMessage(
+      chatId,
+      'Публикация одной карты воспоминаний — 149 ₽. Цена окончательная, доплат нет.',
+      {
+        reply_markup: {
+          inline_keyboard: [[{ text: 'Открыть цены и тарифы', url: legalPageUrl('#legal-prices') }]],
+        },
+      },
+    );
+    return;
+  }
+  if (command === '/support') {
+    await sendMessage(
+      chatId,
+      `Служба поддержки: ${SUPPORT_EMAIL}\nПо вопросам услуги, оплаты и возврата пишите на эту почту.`,
+      {
+        reply_markup: {
+          inline_keyboard: [[{ text: 'Контакты поддержки', url: legalPageUrl('#legal-contacts') }]],
+        },
+      },
+    );
+  }
 }
 
 export async function telegramRoutes(app: FastifyInstance) {
@@ -86,15 +140,22 @@ export async function telegramRoutes(app: FastifyInstance) {
     }
 
     const text = message.text.trim();
-    if (!text.startsWith('/start')) {
-      return reply.send({ ok: true });
-    }
+    const command = text.split(/\s+/)[0]?.split('@')[0]?.toLowerCase() ?? '';
 
-    const payload = text.split(/\s+/).slice(1).join(' ') || undefined;
     try {
-      await handleStart(message.chat.id, payload);
+      if (command === '/start') {
+        const payload = text.split(/\s+/).slice(1).join(' ') || undefined;
+        await handleStart(message.chat.id, payload);
+      } else if (
+        command === '/terms' ||
+        command === '/privacy' ||
+        command === '/prices' ||
+        command === '/support'
+      ) {
+        await handleDocsCommand(message.chat.id, command);
+      }
     } catch (error) {
-      app.log.error(error, 'Telegram /start handler failed');
+      app.log.error(error, 'Telegram command handler failed');
     }
 
     return reply.send({ ok: true });

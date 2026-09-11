@@ -27,4 +27,9 @@ export const env = {
   /** Публичный URL backend (для webhook), например https://temka-backend.onrender.com */
   publicWebhookUrl: process.env.PUBLIC_WEBHOOK_URL?.replace(/\/$/, ''),
   telegramWebhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET,
+  /** Публичный URL фронтенда — документы для банка и кнопки в боте */
+  publicAppUrl: (process.env.PUBLIC_APP_URL ?? 'https://temka-frontend.onrender.com').replace(
+    /\/$/,
+    '',
+  ),
 };

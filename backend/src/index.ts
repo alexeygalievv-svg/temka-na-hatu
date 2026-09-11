@@ -5,7 +5,7 @@ import { env } from './env.js';
 import { mapRoutes } from './routes/maps.js';
 import { telegramRoutes } from './routes/telegram.js';
 import { supabase } from './supabase.js';
-import { setWebhook } from './telegramBot.js';
+import { setBotCommands, setWebhook } from './telegramBot.js';
 
 const app = Fastify({ logger: true, bodyLimit: 2 * 1024 * 1024 });
 
@@ -41,6 +41,12 @@ try {
       app.log.info(`Telegram webhook set: ${webhookUrl}`);
     } catch (error) {
       app.log.error(error, 'Failed to set Telegram webhook');
+    }
+    try {
+      await setBotCommands();
+      app.log.info('Telegram bot commands set');
+    } catch (error) {
+      app.log.error(error, 'Failed to set Telegram bot commands');
     }
   }
 } catch (error) {

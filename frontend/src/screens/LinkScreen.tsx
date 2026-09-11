@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '../components/Button';
+import { LegalLinks } from '../components/LegalLinks';
 import { SupportContacts } from '../components/SupportContacts';
+import { ReviewCode } from '../components/ReviewCode';
 import { copyText, haptic, shareLink } from '../telegram';
 
 interface LinkScreenProps {
@@ -105,6 +107,8 @@ export function LinkScreen({ link, title, onBack, onReset }: LinkScreenProps) {
         </div>
 
         <SupportContacts />
+        <LegalLinks className="legal-buttons legal-buttons--pay" />
+        <ReviewCode />
       </motion.div>
     </div>
   );

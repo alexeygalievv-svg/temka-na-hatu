@@ -31,6 +31,8 @@ services:
         sync: false
       - key: TELEGRAM_WEBHOOK_SECRET
         sync: false
+      - key: PUBLIC_APP_URL
+        value: https://temka-frontend.onrender.com
 
 staticSites:
   - name: temka-frontend

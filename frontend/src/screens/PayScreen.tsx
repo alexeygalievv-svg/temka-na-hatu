@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Button } from '../components/Button';
 import { LegalLinks } from '../components/LegalLinks';
 import { SupportContacts } from '../components/SupportContacts';
+import { ReviewCode } from '../components/ReviewCode';
 import { PUBLICATION_PRICE_RUB, PUBLICATION_DESCRIPTION } from '../lib/pricing';
 import { LEGAL_PRIVACY_PATH, LEGAL_TERMS_PATH } from '../lib/legal';
 import { CardIcon, CheckIcon, SbpIcon } from '../components/PayIcons';
@@ -141,7 +142,8 @@ export function PayScreen({ mapTitle, onBack, onPay }: PayScreenProps) {
         </div>
 
         <SupportContacts />
-        <LegalLinks className="link-screen__legal" />
+        <LegalLinks className="legal-buttons legal-buttons--pay" />
+        <ReviewCode />
       </motion.div>
     </div>
   );

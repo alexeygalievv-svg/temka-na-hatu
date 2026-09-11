@@ -73,3 +73,19 @@ export async function setWebhook(url: string, secretToken?: string): Promise<voi
     ...(secretToken ? { secret_token: secretToken } : {}),
   });
 }
+
+export async function setBotCommands(): Promise<void> {
+  await callTelegram('setMyCommands', {
+    commands: [
+      { command: 'start', description: 'Создать карту' },
+      { command: 'terms', description: 'Пользовательское соглашение' },
+      { command: 'privacy', description: 'Политика конфиденциальности' },
+      { command: 'prices', description: 'Цены и тарифы' },
+      { command: 'support', description: 'Поддержка' },
+    ],
+  });
+}
+
+export function legalPageUrl(hash: string): string {
+  return `${env.publicAppUrl}/?page=legal${hash}`;
+}
