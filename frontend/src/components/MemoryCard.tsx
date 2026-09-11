@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion, useDragControls } from 'framer-motion';
 import type { MemoryPoint } from '../types';
 import { hasPhotoUrl } from '../lib/media';
@@ -19,6 +19,10 @@ interface MemoryCardProps {
   onNext?: () => void;
 }
 
+function markLoadedIfReady(img: HTMLImageElement | null, onReady: () => void) {
+  if (img && img.complete && img.naturalWidth > 0) onReady();
+}
+
 /** Карточка воспоминания: пружинный подъём, фото-«полароид», свайп вниз для закрытия. */
 export function MemoryCard({
   point,
@@ -33,10 +37,17 @@ export function MemoryCard({
 }: MemoryCardProps) {
   const dragControls = useDragControls();
   const cardRef = useRef<HTMLElement>(null);
+  const photoRef = useRef<HTMLImageElement>(null);
   const showPhoto = hasPhotoUrl(point?.photoUrl);
   const ready = useSheetReady(point?.id ?? false);
   const canDismiss = dismissible && ready;
   const hasActions = Boolean((onNext && nextLabel) || (onBack && backLabel));
+  const [photoLoaded, setPhotoLoaded] = useState(false);
+
+  useEffect(() => {
+    setPhotoLoaded(false);
+    markLoadedIfReady(photoRef.current, () => setPhotoLoaded(true));
+  }, [point?.id, point?.photoUrl]);
 
   return (
     <AnimatePresence>
@@ -58,7 +69,7 @@ export function MemoryCard({
             initial={{ y: '108%' }}
             animate={{ y: 0 }}
             exit={{ y: '108%' }}
-            transition={{ type: 'spring', stiffness: 280, damping: 32 }}
+            transition={{ type: 'tween', duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
             drag={canDismiss ? 'y' : false}
             dragListener={false}
             dragControls={dragControls}
@@ -84,45 +95,25 @@ export function MemoryCard({
 
             <div className="memory-card__body">
               {showPhoto && (
-                <motion.figure
-                  className="memory-card__photo"
-                  initial={{ scale: 0.94, rotate: 0, opacity: 0 }}
-                  animate={{ scale: 1, rotate: -1.6, opacity: 1 }}
-                  transition={{ delay: 0.16, type: 'spring', stiffness: 200, damping: 22 }}
-                >
-                  <img src={point.photoUrl ?? ''} alt={point.title} draggable={false} />
-                </motion.figure>
+                <figure className={photoLoaded ? 'memory-card__photo is-ready' : 'memory-card__photo'}>
+                  <img
+                    ref={photoRef}
+                    src={point.photoUrl ?? ''}
+                    alt={point.title}
+                    draggable={false}
+                    onLoad={() => setPhotoLoaded(true)}
+                  />
+                </figure>
               )}
 
-              <motion.h2
-                className="memory-card__title"
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.24, duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-              >
-                {point.title}
-              </motion.h2>
+              <h2 className="memory-card__title">{point.title}</h2>
 
-              {point.description && (
-                <motion.p
-                  className="memory-card__text"
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.32, duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-                >
-                  {point.description}
-                </motion.p>
-              )}
+              {point.description && <p className="memory-card__text">{point.description}</p>}
 
               {point.happenedOn && (
-                <motion.div
-                  className="memory-card__meta"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.4, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-                >
+                <div className="memory-card__meta">
                   <PlaceDate value={point.happenedOn} />
-                </motion.div>
+                </div>
               )}
 
               {hasActions ? (

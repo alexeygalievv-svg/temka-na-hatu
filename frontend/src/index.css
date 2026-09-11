@@ -1323,14 +1323,14 @@ body::after {
   position: absolute;
   left: 12px;
   right: 12px;
-  bottom: 12px;
+  bottom: max(12px, var(--safe-bottom));
   z-index: 60;
   display: flex;
   flex-direction: column;
   background: var(--card);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-deep);
-  padding: 8px 0 calc(18px + var(--safe-bottom));
+  padding: 8px 0 12px;
   max-height: calc(100% - 24px);
   overflow: hidden;
 }
@@ -1348,7 +1348,7 @@ body::after {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   touch-action: pan-y;
-  padding: 0 22px 4px;
+  padding: 0 22px;
 }
 
 .memory-card__counter {
@@ -1363,21 +1363,35 @@ body::after {
 }
 
 .memory-card__photo {
-  background: #fff;
+  position: relative;
+  background: var(--paper-warm);
   padding: 10px 10px 26px;
   border-radius: 6px;
   box-shadow: 0 8px 26px rgba(58, 40, 25, 0.22);
   margin: 0 auto 20px;
-  max-width: 300px;
+  width: min(100%, 300px);
+  aspect-ratio: 4 / 5;
+  max-height: 38vh;
+  overflow: hidden;
 }
 
 .memory-card__photo img {
-  width: 100%;
-  max-height: 42vh;
-  height: auto;
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  top: 10px;
+  bottom: 26px;
+  width: calc(100% - 20px);
+  height: calc(100% - 36px);
   object-fit: contain;
   display: block;
   border-radius: 2px;
+  opacity: 0;
+  transition: opacity 0.4s var(--ease-out);
+}
+
+.memory-card__photo.is-ready img {
+  opacity: 1;
 }
 
 .memory-card__title {
@@ -1406,8 +1420,7 @@ body::after {
 .memory-card__actions {
   display: flex;
   gap: 10px;
-  padding: 18px 0 8px;
-  margin-top: 8px;
+  padding: 16px 0 0;
 }
 
 .viewer__tour-dock {
