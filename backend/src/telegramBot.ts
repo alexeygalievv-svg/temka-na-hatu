@@ -86,6 +86,6 @@ export async function setBotCommands(): Promise<void> {
   });
 }
 
-export function legalPageUrl(hash: string): string {
-  return `${env.publicAppUrl}/?page=legal${hash}`;
+export function legalPageUrl(page: 'terms' | 'privacy' | 'prices' | 'contacts'): string {
+  return `${env.publicAppUrl}/?page=${page}`;
 }

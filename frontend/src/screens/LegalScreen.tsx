@@ -1,24 +1,39 @@
+import { useEffect } from 'react';
 import { SupportContacts } from '../components/SupportContacts';
 import { ReviewCode } from '../components/ReviewCode';
 import { SUPPORT_EMAIL, SUPPORT_MAILTO } from '../lib/contacts';
 import {
+  currentLegalSection,
   LEGAL_CONTACTS_PATH,
   LEGAL_PRICES_PATH,
   LEGAL_PRIVACY_PATH,
   LEGAL_TERMS_PATH,
+  legalSectionId,
 } from '../lib/legal';
 import { PUBLICATION_PRICE_RUB } from '../lib/pricing';
 
 const UPDATED_AT = '11 сентября 2026 г.';
 
 export function LegalScreen() {
+  useEffect(() => {
+    const id = legalSectionId(currentLegalSection());
+    const scroll = () => document.getElementById(id)?.scrollIntoView({ block: 'start' });
+    scroll();
+    const frame = window.requestAnimationFrame(scroll);
+    const timer = window.setTimeout(scroll, 80);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, []);
+
   return (
     <div className="legal">
       <nav className="legal__nav" aria-label="Разделы">
-        <a href="#legal-terms">Пользовательское соглашение</a>
-        <a href="#legal-privacy">Политика конфиденциальности</a>
-        <a href="#legal-prices">Цены и тарифы</a>
-        <a href="#legal-contacts">Поддержка</a>
+        <a href={LEGAL_TERMS_PATH}>Пользовательское соглашение</a>
+        <a href={LEGAL_PRIVACY_PATH}>Политика конфиденциальности</a>
+        <a href={LEGAL_PRICES_PATH}>Цены и тарифы</a>
+        <a href={LEGAL_CONTACTS_PATH}>Поддержка</a>
       </nav>
       <ReviewCode />
 

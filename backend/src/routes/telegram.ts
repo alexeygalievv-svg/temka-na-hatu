@@ -34,10 +34,10 @@ function docsKeyboard() {
   return {
     inline_keyboard: [
       [{ text: 'Создать карту', url: builderOpenLink() }],
-      [{ text: 'Пользовательское соглашение', url: legalPageUrl('#legal-terms') }],
-      [{ text: 'Политика конфиденциальности', url: legalPageUrl('#legal-privacy') }],
-      [{ text: 'Цены и тарифы', url: legalPageUrl('#legal-prices') }],
-      [{ text: 'Поддержка', url: legalPageUrl('#legal-contacts') }],
+      [{ text: 'Пользовательское соглашение', url: legalPageUrl('terms') }],
+      [{ text: 'Политика конфиденциальности', url: legalPageUrl('privacy') }],
+      [{ text: 'Цены и тарифы', url: legalPageUrl('prices') }],
+      [{ text: 'Поддержка', url: legalPageUrl('contacts') }],
     ],
   };
 }
@@ -86,7 +86,7 @@ async function handleDocsCommand(chatId: number, command: string): Promise<void>
   if (command === '/terms') {
     await sendMessage(chatId, 'Пользовательское соглашение сервиса «Карта воспоминаний»:', {
       reply_markup: {
-        inline_keyboard: [[{ text: 'Открыть соглашение', url: legalPageUrl('#legal-terms') }]],
+        inline_keyboard: [[{ text: 'Открыть соглашение', url: legalPageUrl('terms') }]],
       },
     });
     return;
@@ -94,7 +94,7 @@ async function handleDocsCommand(chatId: number, command: string): Promise<void>
   if (command === '/privacy') {
     await sendMessage(chatId, 'Политика конфиденциальности сервиса «Карта воспоминаний»:', {
       reply_markup: {
-        inline_keyboard: [[{ text: 'Открыть политику', url: legalPageUrl('#legal-privacy') }]],
+        inline_keyboard: [[{ text: 'Открыть политику', url: legalPageUrl('privacy') }]],
       },
     });
     return;
@@ -105,7 +105,7 @@ async function handleDocsCommand(chatId: number, command: string): Promise<void>
       'Публикация одной карты воспоминаний — 149 ₽. Цена окончательная, доплат нет.',
       {
         reply_markup: {
-          inline_keyboard: [[{ text: 'Открыть цены и тарифы', url: legalPageUrl('#legal-prices') }]],
+          inline_keyboard: [[{ text: 'Открыть цены и тарифы', url: legalPageUrl('prices') }]],
         },
       },
     );
@@ -117,7 +117,7 @@ async function handleDocsCommand(chatId: number, command: string): Promise<void>
       `Служба поддержки: ${SUPPORT_EMAIL}\nПо вопросам услуги, оплаты и возврата пишите на эту почту.`,
       {
         reply_markup: {
-          inline_keyboard: [[{ text: 'Контакты поддержки', url: legalPageUrl('#legal-contacts') }]],
+          inline_keyboard: [[{ text: 'Контакты поддержки', url: legalPageUrl('contacts') }]],
         },
       },
     );

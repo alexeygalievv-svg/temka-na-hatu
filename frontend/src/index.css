@@ -1547,6 +1547,7 @@ body::after {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-deep);
   padding: 28px 22px 24px;
+  scroll-margin-top: 12px;
 }
 
 .legal__nav {
