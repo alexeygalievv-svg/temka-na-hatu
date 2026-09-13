@@ -1659,7 +1659,7 @@ body::after {
 }
 
 .legal-buttons--compact {
-  margin-top: 8px;
+  margin: 0 0 6px;
   gap: 0;
   justify-content: flex-start;
 }
@@ -1668,7 +1668,7 @@ body::after {
   padding: 0;
   background: none;
   box-shadow: none;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--ink-soft);
 }

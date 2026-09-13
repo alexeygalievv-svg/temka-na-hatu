@@ -148,6 +148,7 @@ export function BuilderScreen({
       />
 
       <header className="builder__header">
+        <LegalLinks compact className="legal-buttons legal-buttons--compact" />
         <div className="builder__header-top">
           <span className="builder__eyebrow">Карта воспоминаний</span>
           {(points.length > 0 || intro.photoFile || intro.photoPreview) && (
@@ -171,7 +172,6 @@ export function BuilderScreen({
           placeholder="Название карты"
           maxLength={60}
         />
-        <LegalLinks compact className="legal-buttons legal-buttons--compact" />
       </header>
 
       <footer className="builder__dock">
