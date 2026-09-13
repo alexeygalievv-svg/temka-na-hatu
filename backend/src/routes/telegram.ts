@@ -11,7 +11,7 @@ import {
   sendMessage,
 } from '../telegramBot.js';
 
-const SUPPORT_EMAIL = 'stinger.galiev@gmail.com';
+const SUPPORT_EMAIL = 'forsomeonespecial@mail.ru';
 
 interface TelegramUser {
   id: number;

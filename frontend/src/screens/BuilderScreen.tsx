@@ -10,6 +10,7 @@ import { PointListSheet } from './PointListSheet';
 import { IntroEditorSheet } from './IntroEditorSheet';
 import { blurOnEnter, hideSoftKeyboard } from '../lib/keyboard';
 import { PUBLICATION_PRICE_RUB } from '../lib/pricing';
+import { LegalLinks } from '../components/LegalLinks';
 
 const MOSCOW = { lat: 55.7512, lng: 37.6184 };
 const ONBOARDING_KEY = 'builder-onboarding-seen';
@@ -170,6 +171,7 @@ export function BuilderScreen({
           placeholder="Название карты"
           maxLength={60}
         />
+        <LegalLinks compact className="legal-buttons legal-buttons--compact" />
       </header>
 
       <footer className="builder__dock">
