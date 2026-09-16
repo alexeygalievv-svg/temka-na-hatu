@@ -19,8 +19,8 @@ interface MemoryCardProps {
   onNext?: () => void;
 }
 
-function markLoadedIfReady(img: HTMLImageElement | null, onReady: () => void) {
-  if (img && img.complete && img.naturalWidth > 0) onReady();
+function isImageReady(img: HTMLImageElement | null) {
+  return Boolean(img && img.complete && img.naturalWidth > 0);
 }
 
 /** Карточка воспоминания: пружинный подъём, фото-«полароид», свайп вниз для закрытия. */
@@ -42,12 +42,13 @@ export function MemoryCard({
   const ready = useSheetReady(point?.id ?? false);
   const canDismiss = dismissible && ready;
   const hasActions = Boolean((onNext && nextLabel) || (onBack && backLabel));
-  const [photoLoaded, setPhotoLoaded] = useState(false);
+  const photoKey = `${point?.id ?? ''}:${point?.photoUrl ?? ''}`;
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const photoLoaded = loadedKey === photoKey;
 
   useEffect(() => {
-    setPhotoLoaded(false);
-    markLoadedIfReady(photoRef.current, () => setPhotoLoaded(true));
-  }, [point?.id, point?.photoUrl]);
+    if (isImageReady(photoRef.current)) setLoadedKey(photoKey);
+  }, [photoKey]);
 
   return (
     <AnimatePresence>
@@ -95,13 +96,15 @@ export function MemoryCard({
 
             <div className="memory-card__body">
               {showPhoto && (
-                <figure className={photoLoaded ? 'memory-card__photo is-ready' : 'memory-card__photo'}>
+                <figure className={photoLoaded ? 'memory-card__photo' : 'memory-card__photo is-loading'}>
                   <img
+                    key={photoKey}
                     ref={photoRef}
                     src={point.photoUrl ?? ''}
                     alt={point.title}
                     draggable={false}
-                    onLoad={() => setPhotoLoaded(true)}
+                    onLoad={() => setLoadedKey(photoKey)}
+                    onError={() => setLoadedKey(photoKey)}
                   />
                 </figure>
               )}

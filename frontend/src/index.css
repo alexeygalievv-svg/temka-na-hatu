@@ -1386,12 +1386,12 @@ body::after {
   object-fit: contain;
   display: block;
   border-radius: 2px;
-  opacity: 0;
+  opacity: 1;
   transition: opacity 0.4s var(--ease-out);
 }
 
-.memory-card__photo.is-ready img {
-  opacity: 1;
+.memory-card__photo.is-loading img {
+  opacity: 0;
 }
 
 .memory-card__title {
