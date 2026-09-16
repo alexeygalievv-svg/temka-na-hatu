@@ -1364,7 +1364,7 @@ body::after {
 
 .memory-card__photo {
   position: relative;
-  background: var(--paper-warm);
+  background: #fff;
   padding: 10px 10px 26px;
   border-radius: 6px;
   box-shadow: 0 8px 26px rgba(58, 40, 25, 0.22);
