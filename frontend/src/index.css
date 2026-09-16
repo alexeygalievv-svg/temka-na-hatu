@@ -1619,6 +1619,12 @@ body::after {
   color: var(--terra);
 }
 
+.legal__pay-btn {
+  display: inline-flex;
+  margin: 8px 0 12px;
+  text-decoration: none;
+}
+
 .builder__legal,
 .link-screen__legal {
   position: static;
@@ -1954,6 +1960,17 @@ body::after {
 
 .pay-screen__error {
   color: var(--terra-deep);
+}
+
+.pay-screen__stub {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(194, 89, 50, 0.12);
+  color: var(--terra-deep);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
 }
 
 .pay-screen__actions {

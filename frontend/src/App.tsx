@@ -10,7 +10,7 @@ import { BuilderScreen } from './screens/BuilderScreen';
 import { PreviewScreen } from './screens/PreviewScreen';
 import { ViewerScreen } from './screens/ViewerScreen';
 import { LinkScreen } from './screens/LinkScreen';
-import { isLegalPath } from './lib/legal';
+import { isLegalPath, isPayPath } from './lib/legal';
 import { LegalScreen } from './screens/LegalScreen';
 import { PayScreen } from './screens/PayScreen';
 
@@ -41,9 +41,11 @@ export default function App() {
     return param?.startsWith('map_') ? param.slice(4) : null;
   }, []);
 
-  const [route, setRoute] = useState<Route>(() =>
-    viewMapId ? { name: 'viewer', mapId: viewMapId } : { name: 'builder' },
-  );
+  const [route, setRoute] = useState<Route>(() => {
+    if (viewMapId) return { name: 'viewer', mapId: viewMapId };
+    if (isPayPath()) return { name: 'pay' };
+    return { name: 'builder' };
+  });
   const [mapTitle, setMapTitle] = useState('Наши места');
   const [authorName, setAuthorName] = useState(() => getUserName() ?? '');
   const [intro, setIntro] = useState<IntroSettings>(DEFAULT_INTRO);
@@ -183,6 +185,8 @@ export default function App() {
     }
   }
 
+  void publish;
+
   function resetAll() {
     points.forEach((point) => {
       if (point.photoPreview?.startsWith('blob:')) URL.revokeObjectURL(point.photoPreview);
@@ -203,6 +207,14 @@ export default function App() {
     return (
       <div className="app">
         <LegalScreen />
+      </div>
+    );
+  }
+
+  if (isPayPath() && route.name !== 'pay') {
+    return (
+      <div className="app">
+        <PayScreen />
       </div>
     );
   }
@@ -248,10 +260,6 @@ export default function App() {
           <Screen key="pay">
             <PayScreen
               mapTitle={mapTitle}
-              onPay={async () => {
-                const created = await publish();
-                setRoute({ name: 'link', link: created.link });
-              }}
               onBack={() => setRoute({ name: 'builder' })}
             />
           </Screen>

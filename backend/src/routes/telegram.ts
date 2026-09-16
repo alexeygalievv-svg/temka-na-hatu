@@ -37,6 +37,7 @@ function docsKeyboard() {
       [{ text: 'Пользовательское соглашение', url: legalPageUrl('terms') }],
       [{ text: 'Политика конфиденциальности', url: legalPageUrl('privacy') }],
       [{ text: 'Цены и тарифы', url: legalPageUrl('prices') }],
+      [{ text: 'Оплатить / Купить', url: legalPageUrl('pay') }],
       [{ text: 'Поддержка', url: legalPageUrl('contacts') }],
     ],
   };
@@ -76,7 +77,7 @@ async function handleStart(chatId: number, payload: string | undefined): Promise
 
   await sendMessage(
     chatId,
-    'Соберите карту ваших мест с фото и историями — и отправьте её близкому человеку.\n\nПубликация одной карты — 149 ₽.\nПоддержка: ' +
+    'Соберите карту ваших мест с фото и историями — и отправьте её близкому человеку.\n\nТариф: публикация одной карты.\nЦена: 149 ₽.\nПоддержка: ' +
       SUPPORT_EMAIL,
     { reply_markup: docsKeyboard() },
   );
@@ -106,6 +107,18 @@ async function handleDocsCommand(chatId: number, command: string): Promise<void>
       {
         reply_markup: {
           inline_keyboard: [[{ text: 'Открыть цены и тарифы', url: legalPageUrl('prices') }]],
+        },
+      },
+    );
+    return;
+  }
+  if (command === '/pay') {
+    await sendMessage(
+      chatId,
+      'Тариф: публикация одной карты воспоминаний.\nЦена: 149 ₽.\nНажмите кнопку, чтобы перейти к оплате.',
+      {
+        reply_markup: {
+          inline_keyboard: [[{ text: 'Оплатить / Купить', url: legalPageUrl('pay') }]],
         },
       },
     );
@@ -150,6 +163,7 @@ export async function telegramRoutes(app: FastifyInstance) {
         command === '/terms' ||
         command === '/privacy' ||
         command === '/prices' ||
+        command === '/pay' ||
         command === '/support'
       ) {
         await handleDocsCommand(message.chat.id, command);

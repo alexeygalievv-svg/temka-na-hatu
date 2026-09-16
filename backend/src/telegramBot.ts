@@ -81,11 +81,14 @@ export async function setBotCommands(): Promise<void> {
       { command: 'terms', description: 'Пользовательское соглашение' },
       { command: 'privacy', description: 'Политика конфиденциальности' },
       { command: 'prices', description: 'Цены и тарифы' },
+      { command: 'pay', description: 'Оплатить / Купить' },
       { command: 'support', description: 'Поддержка' },
     ],
   });
 }
 
-export function legalPageUrl(page: 'terms' | 'privacy' | 'prices' | 'contacts'): string {
+export function legalPageUrl(
+  page: 'terms' | 'privacy' | 'prices' | 'contacts' | 'pay',
+): string {
   return `${env.publicAppUrl}/?page=${page}`;
 }

@@ -5,6 +5,7 @@ export const LEGAL_TERMS_PATH = '/?page=terms';
 export const LEGAL_PRIVACY_PATH = '/?page=privacy';
 export const LEGAL_PRICES_PATH = '/?page=prices';
 export const LEGAL_CONTACTS_PATH = '/?page=contacts';
+export const LEGAL_PAY_PATH = '/?page=pay';
 
 const LEGAL_PAGES: LegalSection[] = ['terms', 'privacy', 'prices', 'contacts'];
 
@@ -26,6 +27,12 @@ export function isLegalPath(): boolean {
     page === 'legal' ||
     LEGAL_PAGES.includes(page as LegalSection)
   );
+}
+
+export function isPayPath(): boolean {
+  const path = window.location.pathname.replace(/\/+$/, '').toLowerCase();
+  const page = new URLSearchParams(window.location.search).get('page')?.toLowerCase() ?? '';
+  return path.endsWith('/pay') || path.endsWith('/buy') || page === 'pay' || page === 'buy';
 }
 
 export function currentLegalSection(): LegalSection {

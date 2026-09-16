@@ -4,7 +4,7 @@ import { Button } from '../components/Button';
 import { LegalLinks } from '../components/LegalLinks';
 import { SupportContacts } from '../components/SupportContacts';
 import { ReviewCode } from '../components/ReviewCode';
-import { PUBLICATION_PRICE_RUB, PUBLICATION_DESCRIPTION } from '../lib/pricing';
+import { PUBLICATION_PRICE_RUB, PUBLICATION_DESCRIPTION, PUBLICATION_TITLE } from '../lib/pricing';
 import { LEGAL_PRIVACY_PATH, LEGAL_TERMS_PATH } from '../lib/legal';
 import { CardIcon, CheckIcon, SbpIcon } from '../components/PayIcons';
 import { haptic } from '../telegram';
@@ -14,27 +14,16 @@ type PaymentMethod = 'sbp' | 'bank_card';
 interface PayScreenProps {
   mapTitle?: string;
   onBack?: () => void;
-  onPay?: (method: PaymentMethod) => Promise<void>;
 }
 
-export function PayScreen({ mapTitle, onBack, onPay }: PayScreenProps) {
+export function PayScreen({ mapTitle, onBack }: PayScreenProps) {
   const [method, setMethod] = useState<PaymentMethod>('sbp');
   const [accepted, setAccepted] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [stub, setStub] = useState(false);
 
-  async function pay() {
-    if (!accepted || busy || !onPay) return;
-    setError(null);
-    setBusy(true);
-    try {
-      await onPay(method);
-      haptic('medium');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось опубликовать карту');
-    } finally {
-      setBusy(false);
-    }
+  function pay() {
+    haptic('soft');
+    setStub(true);
   }
 
   return (
@@ -58,13 +47,16 @@ export function PayScreen({ mapTitle, onBack, onPay }: PayScreenProps) {
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ type: 'spring', stiffness: 240, damping: 26 }}
       >
-        <p className="pay-screen__eyebrow">Отправка карты</p>
-        <h1 className="pay-screen__title">Публикация карты</h1>
+        <p className="pay-screen__eyebrow">Покупка</p>
+        <h1 className="pay-screen__title">Оплатить / Купить</h1>
+        <p className="pay-screen__map">{PUBLICATION_TITLE}</p>
         {mapTitle ? (
-          <p className="pay-screen__map">«{mapTitle.trim() || 'Карта воспоминаний'}»</p>
-        ) : null}
-        <p className="pay-screen__lead">{PUBLICATION_DESCRIPTION}</p>
+          <p className="pay-screen__lead">Карта «{mapTitle.trim() || 'Карта воспоминаний'}»</p>
+        ) : (
+          <p className="pay-screen__lead">{PUBLICATION_DESCRIPTION}</p>
+        )}
 
+        <p className="pay-screen__methods-label">Тариф</p>
         <ul className="pay-screen__includes">
           <li>Интерактивная карта мест с фото и описаниями</li>
           <li>Уникальная ссылка для близкого человека</li>
@@ -72,7 +64,9 @@ export function PayScreen({ mapTitle, onBack, onPay }: PayScreenProps) {
         </ul>
 
         <p className="pay-screen__price">{PUBLICATION_PRICE_RUB} ₽</p>
-        <p className="pay-screen__price-note">Цена окончательная, включая все налоги. Доплат нет.</p>
+        <p className="pay-screen__price-note">
+          Конкретная цена тарифа. Окончательная, включая все налоги. Доплат нет.
+        </p>
 
         <p className="pay-screen__methods-label">Способ оплаты</p>
         <div className="pay-screen__methods" role="radiogroup" aria-label="Способ оплаты">
@@ -128,11 +122,15 @@ export function PayScreen({ mapTitle, onBack, onPay }: PayScreenProps) {
           </span>
         </label>
 
-        {error ? <p className="pay-screen__error">{error}</p> : null}
+        {stub ? (
+          <p className="pay-screen__stub" role="status">
+            Оплата пока недоступна. Платёжная система подключается.
+          </p>
+        ) : null}
 
         <div className="pay-screen__actions">
-          <Button wide disabled={!accepted || busy} onClick={() => void pay()}>
-            {busy ? 'Публикуем…' : `Оплатить ${PUBLICATION_PRICE_RUB} ₽`}
+          <Button wide onClick={pay}>
+            Оплатить / Купить {PUBLICATION_PRICE_RUB} ₽
           </Button>
           {onBack ? (
             <Button variant="ghost" wide onClick={onBack}>

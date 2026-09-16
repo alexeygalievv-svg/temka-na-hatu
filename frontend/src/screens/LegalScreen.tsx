@@ -5,6 +5,7 @@ import { SUPPORT_EMAIL, SUPPORT_MAILTO } from '../lib/contacts';
 import {
   currentLegalSection,
   LEGAL_CONTACTS_PATH,
+  LEGAL_PAY_PATH,
   LEGAL_PRICES_PATH,
   LEGAL_PRIVACY_PATH,
   LEGAL_TERMS_PATH,
@@ -33,6 +34,7 @@ export function LegalScreen() {
         <a href={LEGAL_TERMS_PATH}>Пользовательское соглашение</a>
         <a href={LEGAL_PRIVACY_PATH}>Политика конфиденциальности</a>
         <a href={LEGAL_PRICES_PATH}>Цены и тарифы</a>
+        <a href={LEGAL_PAY_PATH}>Оплатить</a>
         <a href={LEGAL_CONTACTS_PATH}>Поддержка</a>
       </nav>
       <ReviewCode />
@@ -287,6 +289,11 @@ export function LegalScreen() {
         <h3>Публикация карты воспоминаний</h3>
         <p>
           <strong>{PUBLICATION_PRICE_RUB} ₽</strong> — разовая оплата за публикацию одной карты.
+        </p>
+        <p>
+          <a className="btn btn--primary legal__pay-btn" href={LEGAL_PAY_PATH}>
+            Оплатить / Купить {PUBLICATION_PRICE_RUB} ₽
+          </a>
         </p>
         <p>В стоимость входит:</p>
         <ul>
